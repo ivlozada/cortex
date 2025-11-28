@@ -159,7 +159,16 @@ class InferenceEngine:
                 for bindings in body_results:
                     head_ground = rule.head.ground(bindings)
                     
-                    if not self.facts.contains(head_ground) and head_ground not in derived:
+                    # Check if already known
+                    already_known = False
+                    if head_ground.negated:
+                        # For explicit negation, check if NOT_predicate exists
+                        explicit_neg = Literal(f"NOT_{head_ground.predicate}", head_ground.args)
+                        already_known = self.facts.contains(explicit_neg)
+                    else:
+                        already_known = self.facts.contains(head_ground)
+
+                    if not already_known and head_ground not in derived:
                         is_duplicate = False
                         for h, _, _ in iteration_new_facts:
                             if h == head_ground:
@@ -188,7 +197,12 @@ class InferenceEngine:
                 break
 
             for head, rule_id, bindings in iteration_new_facts:
-                self.facts.add(head.predicate, head.args)
+                if head.negated:
+                    # Explicit Negation: Store as "NOT_predicate"
+                    self.facts.add(f"NOT_{head.predicate}", head.args)
+                else:
+                    self.facts.add(head.predicate, head.args)
+                
                 derived.add(head)
                 self.trace.append({
                     "type": "derivation",

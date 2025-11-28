@@ -63,17 +63,64 @@ def update_theory_kernel(
             config.compiler.promote_stable_rules(theory, axioms)
             config.compiler.check_conflicts(theory)
             
-        return theory, new_memory
+        # Check for NEGATIVE_GAP (True Negative without explicit explanation)
+        should_return = True
+        if not prediction and not scene.ground_truth:
+            # Check trace for explicit negative derivation
+            has_explanation = False
+            neg_pred = f"NOT_{scene.target_predicate}"
+            for entry in trace:
+                if entry.get("type") == "derivation":
+                    derived = entry.get("derived")
+                    if derived and derived.predicate == neg_pred:
+                        has_explanation = True
+                        break
+            
+            if not has_explanation:
+                should_return = False
+        
+        if should_return:
+            return theory, new_memory
 
     # Tipo de error (equivalente al "signo" del gradiente)
     if prediction and not scene.ground_truth:
         error_type = "FALSE_POSITIVE"
         # CORTEX-OMEGA: Kill Switch / Dogmatism Fix
-        # If we predicted True but it's False, the rules that fired are WRONG.
-        # We must punish them, even if they are Axioms.
         punish_rules(theory, trace, penalty=0.8)
-    else:
+    elif not prediction and scene.ground_truth:
         error_type = "FALSE_NEGATIVE"
+    elif not prediction and not scene.ground_truth:
+        # TRUE NEGATIVE (Correctly predicted False)
+        # But do we have an EXPLANATION? (Explicit Negative Rule)
+        # Check if NOT_target is in facts (derived by forward_chain)
+        # Note: 'scene.facts' is input, we need the derived facts from 'infer'.
+        # 'infer' returns prediction, trace. It doesn't return the full derived facts.
+        # But we can check the trace for a negative derivation?
+        # Or we can assume that if we are here, we might want to reinforce negative rules.
+        
+        # Let's check if we have a negative explanation.
+        # We need to peek into the inference engine state or re-run query for NOT_target.
+        # For efficiency, let's just assume we want to learn explicit negations if we don't have them.
+        # But how do we know if we have them?
+        
+        # Hack: Re-check if NOT_target is derivable
+        neg_target = Literal(scene.target_predicate, (scene.target_entity,), negated=True)
+        # We can't easily check 'derived' from 'infer' because it's not returned.
+        # Let's modify 'infer' to return derived facts? No, too invasive.
+        
+        # Let's assume we always want to try to learn a negative rule if we are in a True Negative state
+        # AND we are in a "learning phase" (which we always are).
+        # But we don't want to spam negative rules for everything.
+        # Only if we suspect we are missing an explanation.
+        
+        # Let's trigger "NEGATIVE_GAP" which the hypothesis generator can choose to ignore if it finds a negative rule already?
+        # Or better: The hypothesis generator will propose a negative rule. 
+        # If a similar negative rule already exists and covers it, the harmony score won't improve much (redundancy).
+        
+        error_type = "NEGATIVE_GAP"
+    else:
+        # True Positive
+        return theory, new_memory
 
     # 2. Generación de teorías candidatas (parches estructurales)
     candidate_theories, ctx = generate_structural_candidates(
@@ -318,7 +365,7 @@ def generate_structural_candidates(
     
     # Handle Cold Start (No rules yet) or Failure to Identify Culprit
     if culprit_rule is None:
-        if error_type == "FALSE_NEGATIVE":
+        if error_type in ["FALSE_NEGATIVE", "NEGATIVE_GAP"]:
             # Genesis Mode: Create a dummy rule to serve as the "culprit" for CREATE_BRANCH
             # This allows the generator to propose a new rule from scratch.
             # Use the scene's target predicate, not hardcoded 'glows'
@@ -330,7 +377,6 @@ def generate_structural_candidates(
             else:
                 vars = ("X",)
                 
-            culprit_rule = Rule("dummy_genesis", Literal(target_pred, vars), [])
             culprit_rule = Rule("dummy_genesis", Literal(target_pred, vars), [])
         else:
             return [], None

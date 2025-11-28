@@ -265,6 +265,7 @@ class HeuristicGenerator:
             self._strategy_anti_unification,
             self._strategy_relational_anti_unification,
             self._strategy_contrastive_refinement, # NUEVO: Refinamiento contrastivo
+            self._strategy_create_negative_rule,   # NUEVO: Explicit Negation
         ]
 
     def _strategy_contrastive_refinement(self, ctx: FailureContext, features: Dict) -> List[Patch]:
@@ -827,6 +828,52 @@ class HeuristicGenerator:
                 )
                 patches.append(patch)
                 
+        return patches
+
+    def _strategy_create_negative_rule(self, ctx: FailureContext, features: Dict) -> List[Patch]:
+        """
+        Estrategia: Crear Regla Negativa Explícita.
+        Para NEGATIVE_GAP (True Negative pero sin explicación):
+        Propone: Not Target(X) :- Body(X).
+        """
+        patches = []
+        
+        if ctx.error_type != "NEGATIVE_GAP":
+            return patches
+            
+        # Buscar propiedades que expliquen por qué es NEGATIVO
+        # Usamos las propiedades del target
+        target_props = features["target_properties"]
+        
+        if not target_props:
+            return patches
+            
+        # Priorizar propiedades distintivas
+        sorted_props = sorted(
+            target_props.items(),
+            key=lambda x: self.PROPERTY_PRIORITY.get(x[0], 99)
+        )
+        
+        for prop, value in sorted_props[:3]:
+            # Crear regla: Not Target(X) :- Prop(X, Val)
+            # Literal de cabeza negado
+            head = Literal(ctx.target_predicate, ("X",), negated=True)
+            body = [Literal(prop, ("X", value))]
+            
+            new_rule = Rule(f"R_neg_{prop}_{value}", head, body)
+            
+            patch = Patch(
+                operation=PatchOperation.CREATE_BRANCH,
+                target_rule_id="genesis", # New rule from scratch
+                details={
+                    "rule": new_rule,
+                    "source_scene": "negative_gap"
+                },
+                confidence=0.85,
+                explanation=f"Regla negativa explícita: {prop}={value} implica NO {ctx.target_predicate}"
+            )
+            patches.append(patch)
+            
         return patches
 
 

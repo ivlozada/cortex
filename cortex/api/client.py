@@ -168,10 +168,31 @@ class Cortex:
                         rule_id = step["rule_id"]
                         rule = self.theory.rules.get(rule_id)
                         if rule:
-                            prediction = True
+                            derived = step.get("derived")
+                            if derived and derived.negated:
+                                prediction = False
+                            else:
+                                prediction = True
+                                
                             explanation = str(rule)
                             confidence = rule.confidence
                             # We assume the first one we find (last in trace) is the "answer"
+                            break
+                            
+        # 3. Explicit Negation Check
+        if not prediction and target_pred:
+            # Check if we derived NOT_target
+            neg_target_lit = Literal(f"NOT_{target_pred}", (entity,))
+            if facts.contains(neg_target_lit):
+                # We have an explicit negative derivation!
+                # Find explanation in trace
+                for step in reversed(engine.trace):
+                    if step["type"] == "derivation" and step["derived"].predicate == f"NOT_{target_pred}":
+                        rule_id = step["rule_id"]
+                        rule = self.theory.rules.get(rule_id)
+                        if rule:
+                            explanation = str(rule)
+                            # We keep prediction=False, but provide explanation
                             break
                             
         return InferenceResult(prediction, explanation, confidence)

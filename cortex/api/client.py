@@ -89,14 +89,19 @@ class Cortex:
             scene_id = f"mem_{len(self.memory)}_{i}"
             
             # Extract ground truth
-            ground_truth = item.get("result", False)
+            if target_label in item:
+                ground_truth = item[target_label]
+                exclude_keys = {target_label, "result"}
+            else:
+                ground_truth = item.get("result", False)
+                exclude_keys = {"result"}
             
             # Build facts
             facts = FactBase()
             target_entity = "obj"
             
             for key, val in item.items():
-                if key == "result": continue
+                if key in exclude_keys: continue
                 facts.add(key, (target_entity, val))
                 
             # Create Scene

@@ -78,6 +78,14 @@ class Cortex:
         print(f"✨ Enlightenment achieved in {duration:.2f}s.")
         print(f"📚 Learned {len(self.theory.rules)} rules.")
         
+    def _sanitize_value(self, val: Any) -> Any:
+        """
+        Ensures that capitalized strings are treated as constants by quoting them.
+        """
+        if isinstance(val, str) and val and val[0].isupper():
+            return f"'{val}'"
+        return val
+
     def absorb_memory(self, data: List[Dict[str, Any]], target_label: str):
         """
         Programmatic ingestion of data (list of dicts).
@@ -102,6 +110,7 @@ class Cortex:
             
             for key, val in item.items():
                 if key in exclude_keys: continue
+                val = self._sanitize_value(val)
                 facts.add(key, (target_entity, val))
                 
             # Create Scene
@@ -128,9 +137,10 @@ class Cortex:
         entity = "query_entity"
         target_pred = kwargs.get("target") # None by default
         
-        for pred, val in kwargs.items():
-            if pred == "target": continue
-            facts.add(pred, (entity, val))
+        for key, val in kwargs.items():
+            if key == "target": continue
+            val = self._sanitize_value(val)
+            facts.add(key, (entity, val))
             
         # 2. Run inference
         from ..core.inference import InferenceEngine

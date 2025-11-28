@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+
+# CORTEX specific
+finanzas_caos.csv
+financial_chaos.csv
+*.log
+cortex_killswitch_proof.png
+cortex_live_proof.png
+realtime_metrics.png
+dirty_data_challenge.py
+sanity_check_v2.py
+hierarchy_torture.py
+generate_marketing_graph.py
+generate_live_graph.py
+
+# VS Code / IDEs
+.vscode/
+.idea/

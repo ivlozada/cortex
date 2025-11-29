@@ -260,9 +260,9 @@ class Cortex:
         # TODO: Parse and add to RuleBase/ValueBase
 
 class InferenceResult:
-    def __init__(self, prediction: bool, axiom: str, confidence: float):
+    def __init__(self, prediction: bool, explanation: str, confidence: float):
         self.prediction = prediction
-        self.axiom = axiom
+        self.explanation = explanation
         self.confidence = confidence
         
     def __repr__(self):

@@ -54,8 +54,13 @@ class Rule:
     fires_neg: int = 0
     
     # CORTEX-OMEGA Pillar 4: Concept Compression
+    # CORTEX-OMEGA Pillar 4: Concept Compression
     usage_count: int = 0
     last_used: float = field(default_factory=lambda: 0.0)
+    
+    # CORTEX-OMEGA v1.5: World-Class Inspection
+    created_at: float = field(default_factory=time.time)
+    updated_at: float = field(default_factory=time.time)
     
     @property
     def coverage(self) -> int:
@@ -78,6 +83,28 @@ class Rule:
         conf_str = f" [{self.confidence:.2f}]" if self.confidence < 1.0 else ""
         return f"{self.id}: {self.head} :- {body_str}{conf_str}"
     
+    def to_dict(self) -> Dict[str, Any]:
+        """Serializes the rule to a dictionary."""
+        return {
+            "id": self.id,
+            "head": str(self.head),
+            "body": [str(b) for b in self.body],
+            "confidence": self.confidence,
+            "stats": {
+                "support": self.support_count,
+                "failures": self.failure_count,
+                "fires_pos": self.fires_pos,
+                "fires_neg": self.fires_neg,
+                "reliability": self.reliability,
+                "coverage": self.coverage
+            },
+            "meta": {
+                "created_at": self.created_at,
+                "updated_at": self.updated_at,
+                "usage_count": self.usage_count
+            }
+        }
+
     def clone(self, new_id: str = None) -> 'Rule':
         """Copia profunda de la regla."""
         return Rule(
@@ -90,7 +117,15 @@ class Rule:
             fires_pos=self.fires_pos,
             fires_neg=self.fires_neg,
             usage_count=self.usage_count,
-            last_used=self.last_used
+            last_used=self.last_used,
+            created_at=self.created_at, # Inherit creation time if cloning? Or new? 
+                                        # If it's a mutation, it's a new rule.
+                                        # If it's a copy, it's the same.
+                                        # Let's assume mutation for now, so maybe new time?
+                                        # Actually, for now let's copy to preserve history if needed, 
+                                        # but usually we want new timestamps for new hypotheses.
+                                        # Let's just copy for now.
+            updated_at=time.time()      # Always update updated_at
         )
 
     def is_subsumed_by(self, other: 'Rule') -> bool:

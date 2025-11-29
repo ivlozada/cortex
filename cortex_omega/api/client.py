@@ -5,7 +5,7 @@ High-level interface for the Cortex Neuro-Symbolic Engine.
 Provides the "5-Line Experience".
 """
 
-from typing import Dict, Any, List, Optional
+from typing import List, Dict, Optional, Any, Union
 from ..core.engine import update_theory_kernel, KernelConfig, infer
 from ..core.rules import RuleBase, FactBase, Literal, Rule
 from ..core.values import ValueBase, Axiom
@@ -36,7 +36,13 @@ class Cortex:
         axioms (ValueBase): The repository of established truths.
     """
     
-    def __init__(self, sensitivity: float = 0.1, mode: str = "robust"):
+    def __init__(self, 
+                 sensitivity: float = 0.1, 
+                 mode: str = "robust",
+                 priors: Dict[str, float] = None,
+                 noise_model: Dict[str, float] = None,
+                 plasticity: Dict[str, Any] = None,
+                 feature_priors: Dict[str, float] = None):
         """
         Initializes the Cortex Brain.
 
@@ -47,8 +53,19 @@ class Cortex:
             mode (str): "robust" (default) or "strict".
                         "robust": Resilient to noise, requires multiple counter-examples to override.
                         "strict": Logical purity, single counter-example overrides immediately.
+            priors (dict): Bayesian priors for rule generation. e.g. {"rule_base": 0.5, "exception": 0.3}
+            noise_model (dict): Expected noise rates. e.g. {"false_positive": 0.05, "false_negative": 0.05}
+            plasticity (dict): Parameters for rule retention. e.g. {"min_conf_to_keep": 0.6, "max_rule_count": 500}
+            feature_priors (dict): Causal hints for feature selection. e.g. {"is_heavy": 0.9, "color": 0.1}
         """
-        self.config = KernelConfig(lambda_complexity=sensitivity, mode=mode)
+        self.config = KernelConfig(
+            lambda_complexity=sensitivity, 
+            mode=mode,
+            priors=priors or {"rule_base": 0.5, "exception": 0.3},
+            noise_model=noise_model or {"false_positive": 0.05, "false_negative": 0.05},
+            plasticity=plasticity or {"min_conf_to_keep": 0.6, "max_rule_count": 500},
+            feature_priors=feature_priors or {}
+        )
         self.theory = RuleBase()
         self.memory = []
         self.axioms = ValueBase()

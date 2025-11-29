@@ -1,6 +1,6 @@
 # core_kernel.py
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Tuple, Optional, Dict, Any
 
 from .rules import RuleBase, Rule, Literal, FactBase, Scene
@@ -31,6 +31,13 @@ class KernelConfig:
     compiler: Optional['KnowledgeCompiler'] = None
     # Refinement Loop
     max_refinement_steps: int = 3
+    
+    # CORTEX-OMEGA v1.5: World-Class Config
+    mode: str = "robust" # "robust" (default) or "strict"
+    priors: Dict[str, float] = field(default_factory=lambda: {"rule_base": 0.5, "exception": 0.3})
+    noise_model: Dict[str, float] = field(default_factory=lambda: {"false_positive": 0.05, "false_negative": 0.05})
+    plasticity: Dict[str, Any] = field(default_factory=lambda: {"min_conf_to_keep": 0.6, "max_rule_count": 500})
+    feature_priors: Dict[str, float] = field(default_factory=dict)
 
 
 
@@ -216,7 +223,7 @@ def update_theory_kernel(
     if pred == scene.ground_truth:
         reward_rules(best_theory, trace, scene.target_predicate, scene.ground_truth)
     else:
-        punish_rules(best_theory, trace, scene.target_predicate, scene.ground_truth, mode=config.mode)
+        punish_rules(best_theory, trace, scene.target_predicate, scene.ground_truth, config=config)
         
     # CORTEX-OMEGA v1.4: Update Rule Stats (Observation)
     update_rule_stats(best_theory, trace, scene.target_predicate, scene.ground_truth)
@@ -243,7 +250,8 @@ def update_theory_kernel(
             trace=trace_r,
             error_type=err_type,
             patch_generator=config.patch_generator,
-            lambda_complexity=config.lambda_complexity
+            lambda_complexity=config.lambda_complexity,
+            config=config
         )
         
         if not refinement_candidates:
@@ -272,7 +280,8 @@ def update_theory_kernel(
 
     # CORTEX-OMEGA: Garbage Collection (Periodic)
     # For now, run every time (it's cheap).
-    garbage_collect(best_theory)
+    threshold = config.plasticity.get("min_conf_to_keep", 0.0) if config.plasticity else 0.0
+    garbage_collect(best_theory, threshold=threshold)
     
     # CORTEX-OMEGA: Self-Reflecting Compiler
     if config.compiler:
@@ -340,27 +349,20 @@ def infer(theory: RuleBase, scene: Scene):
     
     return prediction, trace
 
-@dataclass
-class KernelConfig:
-    lambda_complexity: float = 0.1
-    max_memory: int = 1000
-    compiler: Any = None
-    patch_generator: Any = None
-    temperature: float = 1.0
-    cooling_rate: float = 0.95
-    mode: str = "robust" # "robust" (default) or "strict"
+
 
 # ... (update_theory_kernel signature needs update too, but let's do punish_rules first)
 
-def punish_rules(theory: RuleBase, trace: List[Dict], target_predicate: str, ground_truth: bool, mode: str = "robust", penalty: float = 0.5):
+def punish_rules(theory: RuleBase, trace: List[Dict], target_predicate: str, ground_truth: bool, config: KernelConfig = None):
     """
     Punishes rules that contributed to an incorrect prediction.
     CORTEX-OMEGA v1.3: Selective Punishment.
     
     Modes:
     - "robust": Standard Bayesian update (failure_count += 1). Resilient to noise.
-    - "strict": Harsh punishment (failure_count += 5). Single counter-example kills the rule.
+    - "strict": Harsh punishment (failure_count = 1_000_000). Single counter-example kills the rule.
     """
+    mode = config.mode if config else "robust"
     punished = set()
     
     for step in trace:
@@ -546,6 +548,7 @@ def generate_structural_candidates(
     patch_generator: Optional[HypothesisGenerator] = None,
     top_k: int = 5,
     lambda_complexity: float = 0.3,
+    config: KernelConfig = None
 ) -> Tuple[List[Tuple[RuleBase, Any]], Optional[FailureContext]]:
     """
     Toma la teoría actual + la escena conflictiva y devuelve una lista de teorías candidatas
@@ -592,6 +595,7 @@ def generate_structural_candidates(
         prediction=(error_type == "FALSE_POSITIVE"),
         ground_truth=not (error_type == "FALSE_POSITIVE"),
         inference_trace=trace,
+        feature_priors=config.feature_priors if config else {}
     )
 
     # Pass lambda_complexity to generator if supported

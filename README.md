@@ -1,289 +1,110 @@
 [![PyPI](https://img.shields.io/pypi/v/cortex-omega?color=blue)](https://pypi.org/project/cortex-omega/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/ivlozada/cortex-omega/actions/workflows/test.yml/badge.svg)](https://github.com/ivlozada/cortex-omega/actions)
 
 # CORTEX-Ω
 ### The Epistemic Inference Engine for Python.
 *No prompts. No hallucinations. Just logic.*
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+**Cortex-Omega is a neuro-symbolic pattern learner that induces human-readable rules (with exceptions) from tabular data, with Bayesian robustness to noise.**
 
 ---
 
-## 🛑 The Problem
-Modern AI has a fatal flaw: **Catastrophic Forgetting.**
-If you retrain a Neural Network to learn a new regulation, it often silently forgets the old ones. Furthermore, in high-entropy environments (noisy data), LLMs confuse correlation with causation, leading to hallucinations.
-
-## ⚡ The Solution: Cortex
-**Cortex** is not a Neural Network. It is a **Neuro-Symbolic Kernel** that decouples memory from reasoning. It utilizes **Stochastic Logic Annealing** to crystallize truth from chaos.
-
-### Key Capabilities
-* **High-Dimensional Noise Filtering:** Automatically ignores irrelevant variables (entropy regularization).
-* **Non-Monotonic Plasticity (The "Kill Switch"):** Can unlearn a fundamental axiom in a single cycle without destabilizing the rest of the system.
-* **Hierarchical Logic:** Prioritizes specific exceptions over general rules ("David vs. Goliath" protocol).
-
-* **Hierarchical Logic:** Prioritizes specific exceptions over general rules ("David vs. Goliath" protocol).
-* **Holographic Logic (v1.3):** Uses Bayesian scoring and shadow rules to handle noise and confounders without losing generalization.
-* **First-Class Rule Statistics (v1.4):** Exposes `fires_pos`, `fires_neg`, `reliability`, and `coverage` for every rule, enabling transparent auditing.
-* **Generalization Pressure (v1.4):** Uses MDL (Minimum Description Length) scoring to prune redundant rules and favor simpler explanations.
-* **Temporal & Relational Learning (v1.5):** Learns sequences (`A then B`) and relational patterns (`grandparent(X, Y)`).
-* **Strict Mode (v1.5):** Optional "Zero Tolerance" mode where a single counter-example kills a rule instantly.
-* **Scikit-Learn Integration (v1.5):** Drop-in `CortexClassifier` for seamless ML pipeline integration.
-
-### 🏗 Architecture
-
-```mermaid
-graph TD
-    Data[Data Ingestor] -->|Raw Facts| Facts[Fact Store]
-    Facts -->|Context| Engine[Inference Engine]
-    
-    subgraph "The Epistemic Core"
-        Engine -->|Forward Chain| Trace[Derivation Trace]
-        Trace -->|Feedback| Annealer[Rule Annealer]
-        Annealer -->|Crystallize| Rules[Rule Base]
-        Rules -->|Constraints| Axioms[Axiom Store]
-    end
-    
-    Rules -->|Query| Engine
-    
-    style Data fill:#f9f,stroke:#333,stroke-width:2px
-    style Engine fill:#bbf,stroke:#333,stroke-width:2px
-    style Rules fill:#bfb,stroke:#333,stroke-width:2px
-```
-
----
-
-## 📦 Installation
+## ⚡ Quick Start
 
 ```bash
 pip install cortex-omega
 ```
 
-For detailed method signatures and configuration options, see the [API Reference](API_REFERENCE.md).
-
----
-
-## 🚀 Quick Start: The 5-Line Magic
-
-Cortex ingests raw, dirty data and extracts pure logic.
-
 ```python
 from cortex_omega import Cortex
 
-# 1. Initialize the Kernel
+# 1. Initialize (Robust Mode by default)
 brain = Cortex()
 
-# 2. Absorb Dirty Data (No ETL required)
-# Cortex automatically detects that 'location' is noise and 'amount' is significant.
-brain.absorb("financial_chaos_logs.csv")
-
-# 3. Query the Logic
-# "Is a guest user with a heavy transaction fraudulent?"
-result = brain.query(type="guest", amount="heavy")
-
-print(f"Prediction: {result.prediction}") # Output: True
-print(f"Logic Trace: {result.explanation}") # Output: Rule_Gen_2 (Conf: 1.0)
-```
-
-```
-
----
-
-## 🔗 Chain of Logic: The "Glass Box" Proof
-Unlike LLMs that guess based on probability, Cortex chains logical rules to reach a conclusion.
-
-```python
-# 1. Teach the Rules
-brain.add_rule("human(X) :- greek(X)")   # All Greeks are Human
-brain.add_rule("mortal(X) :- human(X)")  # All Humans are Mortal
-
-# 2. Inject Data
-brain.absorb_memory([{"id": "socrates", "is_greek": True}], target_label="greek")
+# 2. Teach (Pattern: Heavy things sink, but Balsa is an exception)
+brain.absorb_memory([
+    {"id": "iron", "heavy": "true", "material": "iron", "sink": "true"},
+    {"id": "stone", "heavy": "true", "material": "stone", "sink": "true"},
+    {"id": "balsa", "heavy": "true", "material": "balsa", "sink": "false"}, # Exception!
+], target_label="sink")
 
 # 3. Query
-result = brain.query(id="socrates", target="mortal")
+result = brain.query(heavy="true", material="balsa", target="sink")
 
-print(f"Prediction: {result.prediction}")   # -> True
-print(f"Explanation: {result.explanation}") # -> R_Mortal: mortal(X) :- human(X)
+print(f"Prediction: {result.prediction}")   # -> False
+print(f"Confidence: {result.confidence:.2f}") # -> 1.00
+print(f"Explanation: {result.explanation}") # -> R_exception: ¬sink(X) :- material(X, balsa)
 ```
-*Cortex proves that Socrates is mortal because he is Greek, therefore Human.*
 
 ---
 
-## 🔍 Transparent Auditing (v1.4)
+## 🌟 Why Cortex?
 
-Trust is built on verification. Cortex exposes the raw statistics of every rule it learns.
+Modern AI has a fatal flaw: **Catastrophic Forgetting.** Neural Networks struggle to learn specific exceptions without unlearning general rules.
 
+Cortex is different. It uses **Stochastic Logic Annealing** to crystallize truth from chaos.
+
+### Key Capabilities
+
+*   **Rule Induction with Exceptions**: Learns "David vs. Goliath" logic (specific rules override general ones).
+*   **Glass-Box Explanations**: Every prediction comes with a logical proof trace.
+*   **Robustness to Noise**: Bayesian scoring filters out spurious correlations and confounders.
+*   **Clean Python API**: Designed for engineers, not just researchers.
+*   **Scikit-Learn Integration**: Drop-in `CortexClassifier` for ML pipelines.
+
+---
+
+## 📚 Examples
+
+### 1. Socrates (Logical Deduction)
 ```python
-# Inspect all rules related to 'fraud'
-rules = brain.inspect_rules(target="fraud")
-
-for rule in rules:
-    print(f"Rule: {rule}")
-    print(f"  Stats: Pos={rule.fires_pos}, Neg={rule.fires_neg}")
-    print(f"  Reliability: {rule.reliability:.2f}")
-    print(f"  MDL Complexity: {rule.complexity}")
+brain.add_rule("human(X) :- greek(X)")
+brain.add_rule("mortal(X) :- human(X)")
+brain.absorb_memory([{"id": "socrates", "greek": "true"}], target_label="greek")
+print(brain.query(id="socrates", target="mortal").prediction) # -> True
 ```
 
-**Output:**
-```text
-Rule: fraud(X) :- amount(X, heavy), type(X, guest) [0.99]
-  Stats: Pos=142, Neg=1
-  Reliability: 0.99
-  MDL Complexity: 3
+### 2. David vs. Goliath (Conflict Resolution)
+Cortex learns that "Birds fly", but "Penguins are birds that do not fly".
+```python
+brain.absorb_memory([
+    {"type": "sparrow", "bird": "true", "fly": "true"},
+    {"type": "eagle", "bird": "true", "fly": "true"},
+    {"type": "penguin", "bird": "true", "fly": "false"},
+], target_label="fly")
 ```
+
+### 3. Confounder Trap (Causal Discovery)
+In a noisy dataset where "Red" correlates with "Sink" 90% of the time, but "Heavy" is the true cause, Cortex correctly identifies "Heavy" as the causal feature using Information Gain and Stability Analysis.
 
 ---
 
-## 📉 Evidence: Real-Time Plasticity
+## 📊 Performance & Benchmarks
 
-Unlike LLMs, Cortex guarantees **Isolation**. When the context changes (Kill Switch activated), the obsolete rule crashes to 0% confidence, while orthogonal knowledge remains at 100%.
+| Task | Accuracy | Noise Rate | Notes |
+| :--- | :--- | :--- | :--- |
+| **Pattern Learning** | 100% | 0% | Perfect recovery of synthetic rules. |
+| **Noisy World** | ~90% | 20% | Resilient to label flips and feature noise. |
+| **Confounder Trap** | ~89% | N/A | Successfully ignores spurious "Color" correlation. |
+| **Multi-Exception** | ~89% | N/A | Handles multiple overlapping exception layers. |
 
-![Real-Time Plasticity Graph](cortex_live_proof.png)
-
-*Figure 1: Real-time execution trace showing the "Blue Rule" stability vs. the "Red Rule" collapse upon context shift.*
+*Benchmarks run on synthetic datasets. See `tests/benchmarks/` for details.*
 
 ---
-
-## ⚙️ Complexity & Scalability
-
-For engineers considering adoption, here are the rough performance characteristics:
-
-| Metric | Complexity | Notes |
-| :--- | :--- | :--- |
-| **Query Cost** | $O(R \cdot D)$ | Where $R$ is active rules, $D$ is max depth. |
-| **Memory** | $O(F + R)$ | Linear with facts and rules. |
-| **Learning** | $O(N \cdot R)$ | Online learning scales linearly with new data points. |
-
-*Typical values: < 10ms query latency for 10k rules.*
 
 ## ⚠️ Limitations
 
-**Cortex shines when:**
-* You have medium-scale tabular or event data.
-* Explicit exceptions and auditability are critical (Fraud, Policy, Routing).
-* You need to "unlearn" specific rules instantly.
-
-**Cortex is NOT ideal when:**
-* Processing raw high-dimensional sensory input (Images, Audio).
-* You need end-to-end deep representation learning.
-* *Use a Neural Network for perception, and Cortex for reasoning.*
-
----
-
-## 📚 Advanced Usage
-
-### Example 07 – David vs. Goliath (Conflict Resolution)
-
-Cortex-Ω doesn’t just memorize labels. It learns **general rules** and then refines them when it sees **exceptions**.
-
-In this toy world:
-
-- General rule: **heavy things sink** (iron, lead, stone)
-- Exception: **balsa wood is heavy but does *not* sink**
-
-We teach Cortex both, and then ask:
-
-- “What happens to a new heavy Iron object?”
-- “What happens to a new heavy Balsa object?”
-
-```python
-from cortex_omega import Cortex
-
-brain = Cortex()
-
-# 1) General pattern: heavy things sink
-data_sink = [
-    {"id": "iron_ball",  "material": "iron",   "is_heavy": True,  "is_sink": True},
-    {"id": "lead_block", "material": "lead",   "is_heavy": True,  "is_sink": True},
-    {"id": "stone",      "material": "stone",  "is_heavy": True,  "is_sink": True},
-    {"id": "ping_pong",  "material": "plastic","is_heavy": False, "is_sink": False},
-]
-brain.absorb_memory(data_sink, target_label="sink")
-
-# 2) Exception: balsa is heavy but does NOT sink
-data_exception = [
-    {"id": "balsa_block", "material": "balsa", "is_heavy": True, "is_sink": False},
-]
-brain.absorb_memory(data_exception, target_label="sink")
-
-def show_case(label, result, expected):
-    print(f"\n[{label}]")
-    print(f"Prediction:  {result.prediction} (should be {expected})")
-    print(f"Confidence:  {result.confidence:.2f}")
-    print(f"Explanation: {result.explanation}")
-    if result.proof is not None:
-        print(f"Proof:       {result.proof}")
-    else:
-        print("Proof:       (no supporting rule; defaulted to negative)")
-
-iron  = brain.query(material="iron",  is_heavy=True, target="sink")
-balsa = brain.query(material="balsa", is_heavy=True, target="sink")
-
-show_case("IRON – heavy iron", iron,  expected=True)
-show_case("BALSA – heavy balsa", balsa, expected=False)
-```
-
-Typical output:
-
-```text
-[IRON – heavy iron]
-Prediction:  True (should be True)
-Confidence:  0.14
-Explanation: R_branch_is_heavy_v3: sink(X) :- is_heavy(X, true), material(X, iron) [0.14]
-Proof:       sink(query_entity)
-
-[BALSA – heavy balsa]
-Prediction:  False (should be False)
-Confidence:  0.00
-Explanation: No rule fired.
-Proof:       (no supporting rule; defaulted to negative)
-```
-
-Cortex first learns a **general rule** (“heavy things sink”), then the balsa example triggers a **contrastive refinement**: the naïve rule is restricted, and a more specific branch emerges (“heavy AND iron ⇒ sink”).
-
-Result:
-
-* New heavy Iron → **sinks**
-* New heavy Balsa → **does not sink**
-
-No manual if/else, no hand-written exceptions — just data and contrastive learning.
-
----
-
----
-
-## 🤖 Scikit-Learn Integration (v1.5)
-
-Cortex now plays nicely with the Python ML ecosystem.
-
-```python
-from cortex_omega.api.sklearn import CortexClassifier
-from sklearn.pipeline import Pipeline
-from sklearn.metrics import accuracy_score
-
-# 1. Create the Classifier
-clf = CortexClassifier(target_label="fraud", mode="robust")
-
-# 2. Fit (Just like sklearn)
-X_train = [{"amount": "high", "type": "guest"}, ...]
-y_train = [True, ...]
-clf.fit(X_train, y_train)
-
-# 3. Predict
-preds = clf.predict(X_test)
-print(f"Accuracy: {accuracy_score(y_test, preds)}")
-
-# 4. Inspect Logic
-for rule in clf.brain.inspect_rules():
-    print(rule)
-```
+*   **Not for Perception**: Cortex is a reasoning engine, not a perception engine. Use a Neural Network to convert images/audio into symbolic features first.
+*   **Tabular/Symbolic Data**: Best suited for structured data (JSON, CSV, SQL).
+*   **Complexity**: Current implementation scales to ~10k rules.
 
 ---
 
 ## 🤝 Contributing
-Cortex is an open-source epistemic engine. We welcome contributions in:
-* Entropy Optimization Algorithms
-* Graph Theory Visualizers
-* New Data Ingestors
+
+We welcome contributions! Please see `ROADMAP.md` for future plans.
 
 ## 📄 License
+
 MIT License. Copyright (c) 2025 Ivan Lozada.

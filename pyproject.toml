@@ -8,7 +8,16 @@ version = "1.5.0"
 description = "The Epistemic Inference Engine for Python. No prompts. Just logic."
 readme = "README.md"
 requires-python = ">=3.7"
-license = {text = "MIT License"}
+license = {text = "MIT"}
+keywords = ["neuro-symbolic", "inductive-logic-programming", "explainable-ai", "rule-learning"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 authors = [
   {name = "Ivan Lozada", email = "ilozada@example.com"}
 ]

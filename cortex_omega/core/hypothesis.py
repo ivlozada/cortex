@@ -59,6 +59,9 @@ class FailureContext:
     target_args: Optional[Tuple[str, ...]] = None # Added for Binary Relations
     inference_trace: List[Dict] = field(default_factory=list)
     memory: List[Any] = field(default_factory=list) # List[Scene] but avoiding circular import
+    
+    # CORTEX-OMEGA v1.5: Feature Priors
+    feature_priors: Dict[str, float] = field(default_factory=dict)
 
 
 class DiscriminativeFeatureSelector:
@@ -144,6 +147,10 @@ class DiscriminativeFeatureSelector:
             
             # Final Score
             score = impact * support
+            
+            # CORTEX-OMEGA v1.5: Feature Priors
+            if pred in ctx.feature_priors:
+                score *= ctx.feature_priors[pred]
             
             # CORTEX-OMEGA v1.4: Confounder Invariance (Stability Check)
             # Split memory into Early/Late to detect drift.

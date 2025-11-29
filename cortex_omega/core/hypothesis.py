@@ -418,12 +418,18 @@ class HeuristicGenerator:
                     elif priority >= 4: # color, etc
                         base_conf -= 0.1
                         
+                    # Handle boolean/arity-1
+                    if value == "true":
+                        args = ("X",)
+                    else:
+                        args = ("X", value)
+                        
                     patch = Patch(
                         operation=PatchOperation.ADD_LITERAL,
                         target_rule_id=ctx.rule.id,
                         details={
                             "predicate": pred,
-                            "args": ("X", value)
+                            "args": args
                         },
                         confidence=base_conf,
                         explanation=f"Considerar {pred}={value} como condición"

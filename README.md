@@ -1,3 +1,5 @@
+[![PyPI](https://img.shields.io/pypi/v/cortex-omega?color=blue)](https://pypi.org/project/cortex-omega/)
+
 # CORTEX-Ω
 ### The Epistemic Inference Engine for Python.
 *No prompts. No hallucinations. Just logic.*

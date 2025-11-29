@@ -9,8 +9,12 @@ Scenario:
 1. General Rule: "Heavy things sink" (Learned from Iron, Lead, Stone)
 2. Exception: "Balsa wood is heavy but floats" (Learned from Balsa)
 
-The engine must learn to predict that a new piece of Iron sinks, but a new piece of Balsa floats,
-even though both are "heavy".
+The Key Mechanism:
+- Both Iron and Balsa are heavy.
+- Cortex learns a general "heavy => sink" rule.
+- Balsa, as a negative example for sink, triggers **contrastive refinement**.
+- After refinement, the rule becomes specific (e.g., "heavy AND iron => sink"), 
+  so a heavy Iron sinks, but a heavy Balsa does not.
 """
 
 from cortex_omega import Cortex
@@ -47,7 +51,7 @@ def main():
     print(f"Prediction:  {iron.prediction} (Should be True)")
     print(f"Confidence:  {iron.confidence:.2f}")
     print(f"Explanation: {iron.explanation}")
-    # print(f"Proof:       {iron.proof}") # Optional: Uncomment to see internal trace
+    print(f"Proof:       {iron.proof}")
 
     # Case B: Balsa (Should follow Exception)
     balsa = brain.query(material="balsa", is_heavy=True, target="sink")
@@ -55,7 +59,7 @@ def main():
     print(f"Prediction:  {balsa.prediction} (Should be False)")
     print(f"Confidence:  {balsa.confidence:.2f}")
     print(f"Explanation: {balsa.explanation}")
-    # print(f"Proof:       {balsa.proof}") # Optional: Uncomment to see internal trace
+    print(f"Proof:       {balsa.proof}")
 
 if __name__ == "__main__":
     main()

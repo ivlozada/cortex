@@ -15,8 +15,8 @@ try:
     # 3. Inject Data (The 'Memory' Test)
     # "Socrates is a man"
     print("Step 2: Injecting Data (Socrates is a man)...")
-    socrates_data = [{"id": "socrates", "is_man": True}]
-    # We map the JSON key 'is_man' to the predicate 'man'
+    socrates_data = [{"id": "socrates", "man": True}]
+    # We map the JSON key 'man' to the predicate 'man'
     engine.absorb_memory(socrates_data, target_label="man")
 
     # 4. Query (The 'Inference' Test)

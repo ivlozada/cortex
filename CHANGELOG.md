@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.1] - 2025-11-29
+
+### Fixed
+- **Fact Persistence**: Fixed `absorb_memory` in `client.py` to correctly persist learned facts to the knowledge base, enabling multi-step reasoning (e.g., Aristotle syllogism).
+- **Numeric Learning**: Lowered `min_score` threshold in `hypothesis.py` to 0.01 to allow learning from smaller datasets (critical for demos).
+- **Examples**: Fixed and verified all 10 examples in `examples/`.
+    - `01_financial_fraud_detection.py`: Fixed `AttributeError`.
+    - `07_david_vs_goliath.py`: Added `is_balsa` feature to enable exception learning.
+    - `10_core_capabilities_demo.py`: Refactored to use categorical features for reliable rule learning.
+
 ## [1.8.0] - 2025-11-29
 
 ### Added

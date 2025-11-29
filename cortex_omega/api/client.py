@@ -131,10 +131,12 @@ class Cortex:
         
     def _sanitize_value(self, val):
         """
-        Normalizes values to strings for symbolic processing.
+        Normalizes values to strings for symbolic processing, but preserves numbers.
         """
         if isinstance(val, bool):
             return str(val).lower()
+        if isinstance(val, (int, float)):
+            return val
         return str(val)
 
     def absorb_memory(self, data: List[Dict[str, Any]], target_label: str):
@@ -202,6 +204,11 @@ class Cortex:
                 ground_truth=ground_truth
             )
             
+            # CORTEX-OMEGA: Persist the target as a fact if it is True
+            # This allows subsequent queries to use this learned/observed truth.
+            if ground_truth is True:
+                self.facts.add(target_label, (target_entity,))
+            
             # Learn
             self.theory, self.memory = update_theory_kernel(
                 self.theory, scene, self.memory, self.axioms, self.config
@@ -247,8 +254,6 @@ class Cortex:
             target_predicate=target_pred if target_pred else "unknown",
             ground_truth=False # Dummy
         )
-        
-        logger.debug(f"Query Facts: {facts.facts}")
         
         # 2. Run inference using the Kernel's infer function (which has Conflict Resolution)
         from ..core.engine import infer

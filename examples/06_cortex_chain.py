@@ -20,7 +20,7 @@ try:
     # 3. Inject Data
     print("Step 2: Injecting Data (Socrates is Greek)...")
     # We ONLY tell it he is Greek. We do NOT say he is Human or Mortal.
-    engine.absorb_memory([{"id": "socrates", "is_greek": True}], target_label="greek")
+    engine.absorb_memory([{"id": "socrates", "greek": True}], target_label="greek")
 
     # 4. The Query (Requires jumping from Greek -> Human -> Mortal)
     print("Step 3: Asking Question (Is Socrates mortal?)...")

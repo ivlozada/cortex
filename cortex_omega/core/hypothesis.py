@@ -77,7 +77,7 @@ class DiscriminativeFeatureSelector:
     Selects features that correlate with the target predicate in memory.
     Uses a simplified Information Gain / Correlation metric.
     """
-    def __init__(self, min_score: float = 0.05):
+    def __init__(self, min_score: float = 0.01):
         self.min_score = min_score
 
     def select_features(self, ctx: FailureContext) -> List[str]:

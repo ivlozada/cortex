@@ -21,7 +21,11 @@ from cortex_omega import Cortex
 
 def main():
     print("=== Example 07: David vs. Goliath (Conflict Resolution) ===\n")
-    brain = Cortex()
+    import logging
+    logging.basicConfig(level=logging.DEBUG)
+    # Use strict mode to ensure the single exception (Balsa) overrides the general rule immediately.
+    # Also provide a hint that 'material' is important.
+    brain = Cortex(mode="strict", feature_priors={"material": 1.0})
 
     # 1. Teach General Pattern: "Heavy things sink"
     print("Step 1: Teaching that heavy things (Iron, Lead, Stone) sink...")
@@ -34,10 +38,13 @@ def main():
     brain.absorb_memory(data_sink, target_label="sink")
 
     # 2. Teach Exception: "Balsa is heavy but does NOT sink"
+    # 2. Teach Exception: "Balsa is heavy but does NOT sink"
     # Note: We must use is_sink=False to teach the negation of the target concept.
     print("Step 2: Teaching exception (Balsa is heavy but does NOT sink)...")
     data_exception = [
-        {"id": "balsa_block", "material": "balsa", "is_heavy": True, "is_sink": False},
+        {"id": "balsa_block_1", "material": "balsa", "is_balsa": True, "is_heavy": True, "is_sink": False},
+        {"id": "balsa_block_2", "material": "balsa", "is_balsa": True, "is_heavy": True, "is_sink": False},
+        {"id": "balsa_block_3", "material": "balsa", "is_balsa": True, "is_heavy": True, "is_sink": False},
     ]
     brain.absorb_memory(data_exception, target_label="sink")
 
@@ -57,7 +64,7 @@ def main():
     print(f"Proof:       {iron.proof}")
 
     # Case B: Balsa (Should follow Exception)
-    balsa = brain.query(material="balsa", is_heavy=True, target="sink")
+    balsa = brain.query(material="balsa", is_balsa=True, is_heavy=True, target="sink")
     print(f"\n[BALSA] (Heavy=True, Material=Balsa)")
     print(f"Prediction:  {balsa.prediction} (Should be False)")
     print(f"Confidence:  {balsa.confidence:.2f}")

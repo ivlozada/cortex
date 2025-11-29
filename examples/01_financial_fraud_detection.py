@@ -67,7 +67,7 @@ if __name__ == "__main__":
     print("   Query: Guest + Heavy Transaction")
     result_fraud = brain.query(type="guest", mass="heavy", target="fraud")
     print(f"   Prediction: {result_fraud.prediction} (Confidence: {result_fraud.confidence:.2f})")
-    print(f"   Reasoning:  {result_fraud.axiom}")
+    print(f"   Reasoning:  {result_fraud.explanation}")
     
     # Case B: Admin with Heavy Transaction (Should be Safe)
     print("\n   Query: Admin + Heavy Transaction")

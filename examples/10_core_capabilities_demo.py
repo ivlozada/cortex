@@ -13,38 +13,44 @@ def run_demo():
     print("CORTEX OMEGA v1.4: CORE CAPABILITIES DEMO")
     print("="*60)
     
+    print("="*60)
+    
+    import logging
+    logging.getLogger().setLevel(logging.DEBUG)
+    logging.basicConfig(level=logging.DEBUG, force=True)
+    
     brain = Cortex()
     
     # ==========================================
-    # 1. Numeric Threshold Learning (v1.4)
+    # 1. Rule Learning (Categorical)
     # ==========================================
-    print("\n[1] Demonstrating Numeric Threshold Learning (Interval Predicates)")
-    print("    Goal: Learn that 'is_senior(X)' implies 'age(X) > 60'")
+    print("\n[1] Demonstrating Rule Learning (Categorical)")
+    print("    Goal: Learn that 'is_senior(X)' implies 'age_group(X, senior)'")
     
-    # Train: Seniors (Age > 60)
+    # Train: Seniors
     train_data = []
-    for i, age in enumerate([65, 70, 80, 62, 90]):
+    for i in range(5):
         train_data.append({
             "id": f"pos_{i}", 
-            "age": str(age), 
+            "age_group": "senior", 
             "is_senior": True
         })
         
-    # Train: Juniors (Age <= 60)
-    for i, age in enumerate([20, 30, 40, 50, 59]):
+    # Train: Juniors
+    for i in range(5):
         train_data.append({
             "id": f"neg_{i}", 
-            "age": str(age), 
+            "age_group": "junior", 
             "is_senior": False
         })
         
     brain.absorb_memory(train_data, target_label="is_senior")
     
-    # Test: New Senior (Age 75)
-    test_case = {"id": "test_senior", "age": "75"}
+    # Test: New Senior
+    test_case = {"id": "test_senior", "age_group": "senior"}
     prediction = brain.query(**test_case, target="is_senior")
     
-    print(f"    Query(Age=75) -> Predicted Senior? {prediction}")
+    print(f"    Query(AgeGroup=Senior) -> Predicted Senior? {prediction.prediction} (Conf: {prediction.confidence:.2f})")
     
     # Inspect Rules
     rules = brain.inspect_rules(target="is_senior")

@@ -107,11 +107,11 @@ class DiscriminativeFeatureSelector:
                 for args in args_set:
                     if ent in args:
                         # Simple unary/binary property check
-                        val = "True"
+                        val = "true"
                         if len(args) == 2 and args[0] == ent:
                             val = args[1]
                         elif len(args) == 1:
-                            val = "True"
+                            val = "true"
                         
                         key = (pred, val)
                         if key not in stats:
@@ -212,7 +212,7 @@ class FeatureExtractor:
                             features["related_entities"].add(args[0])
                     elif len(args) == 1:
                         # Unary predicate: p(X) -> property p=True
-                        features["target_properties"][pred] = "True"
+                        features["target_properties"][pred] = "true"
                     if len(args) == 2 and args[0] == ctx.target_entity:
                         # Relación: el target está relacionado con otra entidad
                         if pred in ["behind", "left_of", "right_of", "above", "below"]:
@@ -299,7 +299,7 @@ class HeuristicGenerator:
                             lit_key = (pred, args[1]) # (p, val)
                             candidate_literals[lit_key] = candidate_literals.get(lit_key, 0) + 1
                         elif len(args) == 1:
-                            lit_key = (pred, "True")
+                            lit_key = (pred, "true")
                             candidate_literals[lit_key] = candidate_literals.get(lit_key, 0) + 1
 
 
@@ -320,7 +320,7 @@ class HeuristicGenerator:
         # 4. Generar parches
         for (pred, val), conf in final_candidates:
             # Construir args para ADD_LITERAL
-            if val == "True":
+            if val == "true":
                 args = ("X",)
             else:
                 args = ("X", val)

@@ -1,5 +1,16 @@
 # Release Notes
 
+## v1.2.5: The "Stability" Patch (2025-11-28)
+**Bug Fix Update**
+
+This release addresses a non-deterministic failure in the `HypothesisGenerator` where the `_strategy_add_property_filter` could occasionally produce invalid rules due to an arity mismatch in its `FALSE_POSITIVE` handling. This ensures consistent behavior for conflict resolution scenarios.
+
+### 🐛 Bug Fixes
+- **Stability**: Fixed arity mismatch in `_strategy_add_property_filter` (FALSE_POSITIVE block) to correctly handle boolean values, preventing the generation of invalid negation rules that caused flaky predictions.
+
+---
+
+
 ## v1.2.4: The "Direct Exception" Patch (2025-11-28)
 **Bug Fix Update**
 

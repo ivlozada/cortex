@@ -391,12 +391,18 @@ class HeuristicGenerator:
             for pred, value in features["target_properties"].items():
                 if pred not in [lit.predicate for lit in ctx.rule.body]:
                     # Añadir negación de esta propiedad
+                    # Handle boolean/arity-1
+                    if value == "true":
+                        args = ("X",)
+                    else:
+                        args = ("X", value)
+
                     patch = Patch(
                         operation=PatchOperation.ADD_NEGATED_LITERAL,
                         target_rule_id=ctx.rule.id,
                         details={
                             "predicate": pred,
-                            "args": ("X", value),
+                            "args": args,
                             "negated": True
                         },
                         confidence=0.6,

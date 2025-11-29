@@ -12,7 +12,7 @@ setup(
     description="The Epistemic Inference Engine for Python. No prompts. Just logic.",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/tu-usuario/cortex", # URL de tu repo
+    url="https://github.com/ivlozada/cortex-omega", # URL de tu repo
     packages=find_packages(), # Esto encuentra automáticamente cortex/ core/ io/ api/
     classifiers=[
         "Programming Language :: Python :: 3",

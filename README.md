@@ -24,7 +24,7 @@ If you retrain a Neural Network to learn a new regulation, it often silently for
 ## 📦 Installation
 
 ```bash
-pip install cortex
+pip install cortex-omega
 ```
 
 For detailed method signatures and configuration options, see the [API Reference](API_REFERENCE.md).
@@ -36,7 +36,7 @@ For detailed method signatures and configuration options, see the [API Reference
 Cortex ingests raw, dirty data and extracts pure logic.
 
 ```python
-from cortex import Cortex
+from cortex_omega import Cortex
 
 # 1. Initialize the Kernel
 brain = Cortex()

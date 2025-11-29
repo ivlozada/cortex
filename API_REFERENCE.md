@@ -1,12 +1,12 @@
 # CORTEX-Ω API Reference
 
-This document details the public API surface for the `cortex` package.
+This document details the public API surface for the `cortex-omega` package.
 
 ---
 
 ## 1. Core Engine
 
-### `class cortex.Cortex`
+### `class cortex_omega.Cortex`
 The main entry point for the Epistemic Inference Engine.
 
 #### `__init__(self, sensitivity: float = 0.1)`
@@ -49,7 +49,7 @@ Queries the crystallized logic engine for a prediction based on partial evidence
 
 ## 2. Data Structures
 
-### `class cortex.api.client.PredictionResult`
+### `class cortex_omega.api.client.PredictionResult`
 The object returned by a query, containing both the inference and the epistemic metadata.
 
 * **Attributes:**
@@ -62,7 +62,7 @@ The object returned by a query, containing both the inference and the epistemic 
 
 ## 3. Configuration
 
-### `class cortex.core.engine.KernelConfig`
+### `class cortex_omega.core.engine.KernelConfig`
 Advanced configuration for the inner Structural Gradient Descent loop.
 
 * **Attributes:**

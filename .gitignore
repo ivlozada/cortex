@@ -49,3 +49,4 @@ generate_live_graph.py
 reproduce_*.py
 reproduce_*.py
 *.csv
+cortex_omega/_version.py

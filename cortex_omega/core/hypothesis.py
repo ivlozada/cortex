@@ -1260,7 +1260,7 @@ class HypothesisGenerator:
         
         # Biblioteca de Motivos (v0.4)
         try:
-            from motif_library import MotifLibrary
+            from .motif_library import MotifLibrary
             self.motif_library = MotifLibrary()
         except ImportError:
             print("WARNING: motif_library not found. Disabling motifs.")

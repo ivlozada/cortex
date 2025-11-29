@@ -217,6 +217,16 @@ class Cortex:
         for rule in self.theory.rules.values():
             rule.confidence *= 0.5
             
+    def add_rule(self, rule_str: str):
+        """
+        Manually adds a rule to the theory.
+        Example: brain.add_rule("fraud(X) :- transaction(X, amount, V), V > 10000")
+        """
+        from ..core.rules import parse_rule
+        rule = parse_rule(rule_str)
+        self.theory.add(rule)
+        print(f"🔧 Rule added: {rule}")
+
     def add_exception(self, rule: str, condition: str):
         """
         Manually adds an exception.

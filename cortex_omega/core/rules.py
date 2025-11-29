@@ -231,12 +231,23 @@ def parse_literal(s: str) -> Literal:
     if negated:
         s = s.lstrip("¬").lstrip("not ").strip()
     
-    paren_idx = s.index("(")
-    predicate = s[:paren_idx]
-    args_str = s[paren_idx+1:-1]
-    args = tuple(a.strip() for a in args_str.split(","))
-    
-    return Literal(predicate, args, negated)
+    # Check for infix operators (CORTEX-OMEGA addition)
+    operators = [">=", "<=", "!=", "=", ">", "<"]
+    for op in operators:
+        if op in s and "(" not in s:
+            parts = s.split(op)
+            if len(parts) == 2:
+                return Literal(op, (parts[0].strip(), parts[1].strip()), negated)
+
+    try:
+        paren_idx = s.index("(")
+        predicate = s[:paren_idx]
+        args_str = s[paren_idx+1:-1]
+        args = tuple(a.strip() for a in args_str.split(","))
+        return Literal(predicate, args, negated)
+    except ValueError:
+        # Fallback for 0-arity atoms
+        return Literal(s, (), negated)
 
 
 def parse_rule(s: str, rule_id: str = None) -> Rule:

@@ -526,6 +526,23 @@ class HeuristicGenerator:
             # Construir condiciones de anormalidad
             abnormal_conditions = []
             
+            # 1. Propiedades directas del target
+            for prop, value in features["target_properties"].items():
+                # Handle boolean normalization
+                if value == "true":
+                    abnormal_conditions.append({
+                        "property": prop,
+                        "value": None, # Unary
+                        "is_unary": True
+                    })
+                else:
+                    abnormal_conditions.append({
+                        "property": prop,
+                        "value": value,
+                        "is_unary": False
+                    })
+
+            # 2. Propiedades relacionales
             for rel_fact in features["relational_facts"]:
                 related = rel_fact["related_entity"]
                 rel_pred = rel_fact["predicate"]
@@ -535,7 +552,8 @@ class HeuristicGenerator:
                     abnormal_conditions.append({
                         "relation": rel_pred,
                         "property": prop,
-                        "value": value
+                        "value": value,
+                        "is_unary": False
                     })
             
             if abnormal_conditions:
@@ -1023,14 +1041,26 @@ class PatchApplier:
                 new_rule.body.append(new_literal)
                 
                 # Crear regla que define abnormal basada en condiciones
+                # Crear regla que define abnormal basada en condiciones
                 for i, cond in enumerate(details.get("abnormal_conditions", [])):
+                    body = []
+                    if "relation" in cond:
+                        body.append(Literal(cond["relation"], ("X", "Y")))
+                        if cond.get("is_unary"):
+                             body.append(Literal(cond["property"], ("Y",)))
+                        else:
+                             body.append(Literal(cond["property"], ("Y", cond["value"])))
+                    else:
+                        # Direct property
+                        if cond.get("is_unary"):
+                            body.append(Literal(cond["property"], ("X",)))
+                        else:
+                            body.append(Literal(cond["property"], ("X", cond["value"])))
+                            
                     abnormal_rule = Rule(
                         id=f"{abnormal_pred}_cond_{i}",
                         head=Literal(abnormal_pred, ("X",)),
-                        body=[
-                            Literal(cond["relation"], ("X", "Y")),
-                            Literal(cond["property"], ("Y", cond["value"]))
-                        ],
+                        body=body,
                         confidence=1.0
                     )
                     auxiliary_rules.append(abnormal_rule)

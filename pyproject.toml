@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cortex-omega"
-version = "1.2.3"
+version = "1.2.4"
 description = "The Epistemic Inference Engine for Python. No prompts. Just logic."
 readme = "README.md"
 requires-python = ">=3.7"

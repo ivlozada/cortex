@@ -1,5 +1,16 @@
 # Release Notes
 
+## v1.2.4: The "Direct Exception" Patch (2025-11-28)
+**Bug Fix Update**
+
+This release fixes a critical limitation in the `_strategy_specialize_with_exception` heuristic where it ignored direct properties (e.g., `material=balsa`) and only considered relational properties (e.g., `near(X, kryptonite)`). This ensures the engine can learn exceptions based on intrinsic attributes.
+
+### 🐛 Bug Fixes
+- **Exception Specialization**: Updated `_strategy_specialize_with_exception` and `PatchApplier` to support direct properties as exception conditions, preventing crashes and enabling correct rule specialization for cases like "Heavy things sink unless they are balsa".
+
+---
+
+
 ## v1.2.3: The "Arity Mismatch" Patch (2025-11-28)
 **Bug Fix Update**
 

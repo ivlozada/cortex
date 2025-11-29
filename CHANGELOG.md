@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.1] - 2025-11-29
+
+### Fixed
+- **Versioning**: Updated `__init__.py` to dynamically load version from `setuptools_scm` generated file, ensuring `cortex_omega.__version__` matches the installed package version.
+
 ## [1.7.0] - 2025-11-29
 
 ### Changed

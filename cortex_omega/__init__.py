@@ -1,3 +1,7 @@
-from .api.client import Cortex
+try:
+    from ._version import version as __version__
+except ImportError:
+    # Fallback for local development if package isn't installed
+    __version__ = "0.0.0-dev"
 
-__version__ = "1.2.6"
+from .api.client import Cortex

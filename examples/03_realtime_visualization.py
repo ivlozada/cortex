@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from cortex import Cortex
+from cortex_omega import Cortex
 import sys
 import os
 

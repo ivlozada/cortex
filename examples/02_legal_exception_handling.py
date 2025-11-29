@@ -1,6 +1,6 @@
 import random
 import sys
-from cortex import Cortex
+from cortex_omega import Cortex
 
 # --- ANSI Colors for Terminal Output ---
 GREEN = "\033[92m"

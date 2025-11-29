@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="cortex",  # El nombre corto y duro.
+    name="cortex-omega",  # El nombre corto y duro.
     version="0.1.0-alpha", # Empezamos con Alpha para denotar "Early Access" exclusivo
     author="Ivan Lozada", # Tu nombre o el de tu organización
     author_email="ilozada@example.com", # Pon tu email real si vas a publicar

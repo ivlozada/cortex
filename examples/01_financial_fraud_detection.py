@@ -2,7 +2,7 @@ import csv
 import random
 import os
 import sys
-from cortex import Cortex
+from cortex_omega import Cortex
 
 # --- STEP 1: Generate "Corporate Chaos" (Simulate messy real-world data) ---
 def generate_dirty_csv(filename="financial_chaos.csv"):

@@ -40,6 +40,7 @@ class Cortex:
         self.theory = RuleBase()
         self.memory = []
         self.axioms = ValueBase()
+        self.facts = FactBase() # CORTEX-OMEGA: Persistent Knowledge Base
         self.ingestor = SmartIngestor()
         
         # Initialize sub-components
@@ -97,21 +98,40 @@ class Cortex:
             scene_id = f"mem_{len(self.memory)}_{i}"
             
             # Extract ground truth
+            # Extract ground truth
             if target_label in item:
                 ground_truth = item[target_label]
                 exclude_keys = {target_label, "result"}
+            elif f"is_{target_label}" in item:
+                ground_truth = item[f"is_{target_label}"]
+                exclude_keys = {f"is_{target_label}", "result"}
             else:
                 ground_truth = item.get("result", False)
                 exclude_keys = {"result"}
             
             # Build facts
             facts = FactBase()
-            target_entity = "obj"
+            target_entity = item.get("id", "obj") # Use ID if available
             
             for key, val in item.items():
                 if key in exclude_keys: continue
                 val = self._sanitize_value(val)
+                
+                # Standard Fact: predicate(entity, value)
                 facts.add(key, (target_entity, val))
+                self.facts.add(key, (target_entity, val))
+                
+                # CORTEX-OMEGA: Smart Boolean Handling
+                if val is True:
+                    # Add arity-1 fact: predicate(entity)
+                    facts.add(key, (target_entity,))
+                    self.facts.add(key, (target_entity,))
+                    
+                    # Handle is_ prefix
+                    if key.startswith("is_"):
+                        stripped = key[3:]
+                        facts.add(stripped, (target_entity,))
+                        self.facts.add(stripped, (target_entity,))
                 
             # Create Scene
             scene = Scene(
@@ -133,12 +153,16 @@ class Cortex:
         Example: brain.query(mass="heavy", type="guest", target="fraud")
         """
         # 1. Construct a temporary scene/facts from kwargs
-        facts = FactBase()
-        entity = "query_entity"
+        # Start with persistent facts
+        import copy
+        facts = copy.deepcopy(self.facts)
+        
+        entity = kwargs.get("id", "query_entity") # Use ID if provided
         target_pred = kwargs.get("target") # None by default
         
         for key, val in kwargs.items():
             if key == "target": continue
+            if key == "id": continue # Don't add ID as a property of itself
             val = self._sanitize_value(val)
             facts.add(key, (entity, val))
             

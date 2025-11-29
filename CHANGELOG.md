@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.0] - 2025-11-29
+
+### Changed
+- **Deployment**: Switched to dynamic versioning using `setuptools_scm`. Removed `setup.py` in favor of `pyproject.toml` as the single source of truth.
+
 ## [1.6.0] - 2025-11-29
 
 ### Added

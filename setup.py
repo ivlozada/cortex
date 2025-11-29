@@ -6,7 +6,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="cortex-omega",  # El nombre corto y duro.
-    version="1.2.0", # Major feature update: Epistemic Traceback (Glass Box)
+    version="1.2.1", # Patch: Clean Launch (Default Logging Level = WARNING)
     author="Ivan Lozada", # Tu nombre o el de tu organización
     author_email="ilozada@example.com", # Pon tu email real si vas a publicar
     description="The Epistemic Inference Engine for Python. No prompts. Just logic.",

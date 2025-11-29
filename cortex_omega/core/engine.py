@@ -9,6 +9,9 @@ from .values import ValueBase, Axiom
 from .hypothesis import HypothesisGenerator, FailureContext
 
 import copy
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -44,7 +47,7 @@ def update_theory_kernel(
     Entrada: teoría actual, nueva escena, memoria, axiomas y configuración.
     Salida: nueva teoría, nueva memoria.
     """
-    print(f"DEBUG: Start Update Theory for Scene {scene.id}", flush=True)
+    logger.debug(f"DEBUG: Start Update Theory for Scene {scene.id}")
 
     # 1. Proyección
     prediction, trace = infer(theory, scene)
@@ -142,8 +145,10 @@ def update_theory_kernel(
     best_theory = theory
     best_harmony = score_harmony(theory, eval_scenes, config.lambda_complexity, entropy_map)
     
-    print(f"DEBUG: Initial Harmony: {best_harmony:.4f}")
-    print(f"DEBUG: Candidates generated: {len(candidate_theories)}")
+    best_harmony = score_harmony(theory, eval_scenes, config.lambda_complexity, entropy_map)
+    
+    logger.debug(f"DEBUG: Initial Harmony: {best_harmony:.4f}")
+    logger.debug(f"DEBUG: Candidates generated: {len(candidate_theories)}")
 
     # 4. Búsqueda de la mejor teoría que respete axiomas y mejore armonía
     best_patch = None
@@ -151,12 +156,12 @@ def update_theory_kernel(
     for i, (T_candidate, patch) in enumerate(candidate_theories):
         # 4a. Restricción dura: axiomas
         if violates_axioms(T_candidate, axioms, eval_scenes):
-            print(f"DEBUG: Candidate {i} violated axioms.")
+            logger.debug(f"DEBUG: Candidate {i} violated axioms.")
             continue
 
         # 4b. Recalcular armonía global
         h_new = score_harmony(T_candidate, eval_scenes, config.lambda_complexity, entropy_map)
-        print(f"DEBUG: Candidate {i} Harmony: {h_new:.4f}")
+        logger.debug(f"DEBUG: Candidate {i} Harmony: {h_new:.4f}")
 
         accepted = False
         if h_new > best_harmony:
@@ -172,15 +177,16 @@ def update_theory_kernel(
             temp = max(config.temperature, 1e-5)
             prob = math.exp(delta / temp)
             
+            
             if random.random() < prob:
-                print(f"DEBUG: Accepted worse candidate (Prob={prob:.4f}, T={temp:.4f}) to escape local max.")
+                logger.debug(f"DEBUG: Accepted worse candidate (Prob={prob:.4f}, T={temp:.4f}) to escape local max.")
                 accepted = True
         
         if accepted:
             best_harmony = h_new
             best_theory = T_candidate
             best_patch = patch
-            print(f"DEBUG: New Best Theory Found!")
+            logger.debug(f"DEBUG: New Best Theory Found!")
 
     # Cool down (once per update cycle)
     config.temperature *= config.cooling_rate
@@ -260,10 +266,10 @@ def punish_rules(theory: RuleBase, trace: List[Dict], penalty: float = 0.5):
                     # FALLEN AXIOM: Immediate degradation
                     rule.confidence = 0.01
                     rule.usage_count = 0 # Reset usage to allow GC
-                    print(f"CORTEX: FALLEN AXIOM {rid} (Conf {old_conf:.2f} -> {rule.confidence:.2f}). Usage reset.")
+                    logger.info(f"CORTEX: FALLEN AXIOM {rid} (Conf {old_conf:.2f} -> {rule.confidence:.2f}). Usage reset.")
                 else:
                     rule.confidence *= (1.0 - penalty)
-                    print(f"CORTEX: Punishing rule {rid} (Conf {old_conf:.2f} -> {rule.confidence:.2f}) due to False Positive.")
+                    logger.info(f"CORTEX: Punishing rule {rid} (Conf {old_conf:.2f} -> {rule.confidence:.2f}) due to False Positive.")
                 
                 punished.add(rid)
 
@@ -585,7 +591,7 @@ def garbage_collect(theory: RuleBase, threshold: float = 0.1):
     """
     removed = theory.prune(threshold)
     if removed:
-        print(f"CORTEX: Garbage Collector pruned {len(removed)} rules: {removed}")
+        logger.info(f"CORTEX: Garbage Collector pruned {len(removed)} rules: {removed}")
 
 
 class KnowledgeCompiler:
@@ -608,7 +614,7 @@ class KnowledgeCompiler:
             # Criteria: High Confidence AND High Usage
             if rule.confidence >= self.promotion_threshold and rule.usage_count >= self.min_usage:
                 # Promote!
-                print(f"CORTEX: Promoting {rule_id} to Axiom! (Conf={rule.confidence}, Usage={rule.usage_count})")
+                logger.info(f"CORTEX: Promoting {rule_id} to Axiom! (Conf={rule.confidence}, Usage={rule.usage_count})")
                 
                 # Convert Rule to Axiom
                 # Axiom format: condition -> forbidden
@@ -706,7 +712,7 @@ class KnowledgeCompiler:
                         # Naive body equality
                         if self._bodies_equal(r1.body, r2.body):
                             conflicts.append(f"Conflict between {r1.id} and {r2.id}")
-                            print(f"CORTEX: Logical Conflict detected! {r1.id} vs {r2.id}")
+                            logger.warning(f"CORTEX: Logical Conflict detected! {r1.id} vs {r2.id}")
                             
         return conflicts
 

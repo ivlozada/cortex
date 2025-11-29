@@ -1,3 +1,16 @@
+# Release Notes: Cortex-Omega v1.2.1
+
+## The "Clean Launch" Patch
+
+This patch reduces the default logging verbosity to ensure a professional, silent launch experience.
+
+### 🛠 Improvements
+
+- **Silent by Default**: The engine now defaults to `WARNING` logging level. The "Matrix code" debug output is suppressed unless explicitly enabled.
+- **Logging Integration**: Replaced all `print` statements with proper `logging` calls (`info`, `debug`, `warning`).
+
+---
+
 # Release Notes: Cortex-Omega v1.2.0
 
 ## The "Glass Box" Update

@@ -14,8 +14,14 @@ from ..core.inference import Proof
 
 from ..io.ingestor import SmartIngestor
 import time
+import logging
+
+# Configure default logging to WARNING to keep the launch clean
+logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 class Cortex:
+
     """
     The main entry point for the Cortex Epistemic Engine.
 
@@ -66,20 +72,21 @@ class Cortex:
         Raises:
             FileNotFoundError: If the file path is invalid.
         """
-        print(f"🧠 Cortex is absorbing knowledge from '{source}'...")
+        logger.info(f"🧠 Cortex is absorbing knowledge from '{source}'...")
         scenes = self.ingestor.ingest(source)
         
         start_time = time.time()
         for i, scene in enumerate(scenes):
             if i % 10 == 0:
-                print(f"  Processing datum {i}/{len(scenes)}...")
+                logger.debug(f"  Processing datum {i}/{len(scenes)}...")
             self.theory, self.memory = update_theory_kernel(
                 self.theory, scene, self.memory, self.axioms, self.config
             )
         
         duration = time.time() - start_time
-        print(f"✨ Enlightenment achieved in {duration:.2f}s.")
-        print(f"📚 Learned {len(self.theory.rules)} rules.")
+        logger.info(f"✨ Enlightenment achieved in {duration:.2f}s.")
+        logger.info(f"📚 Learned {len(self.theory.rules)} rules.")
+
         
     def _sanitize_value(self, val: Any) -> Any:
         """
@@ -251,8 +258,9 @@ class Cortex:
         Simulates a context shift (Plasticity).
         Degrades current rules to allow new learning.
         """
-        print(f"🔄 Context Shift: {context_name}")
+        logger.info(f"🔄 Context Shift: {context_name}")
         # Simple implementation: Decay all rule confidence
+
         for rule in self.theory.rules.values():
             rule.confidence *= 0.5
             
@@ -264,15 +272,17 @@ class Cortex:
         from ..core.rules import parse_rule
         rule = parse_rule(rule_str)
         self.theory.add(rule)
-        print(f"🔧 Rule added: {rule}")
+        logger.info(f"🔧 Rule added: {rule}")
+
 
     def add_exception(self, rule: str, condition: str):
         """
         Manually adds an exception.
         Placeholder for advanced logic.
         """
-        print(f"🛡️ Exception added: {rule} IF {condition}")
+        logger.info(f"🛡️ Exception added: {rule} IF {condition}")
         # TODO: Parse and add to RuleBase/ValueBase
+
 
 class InferenceResult:
     def __init__(self, prediction: bool, explanation: str, confidence: float, proof: Optional[Proof] = None):

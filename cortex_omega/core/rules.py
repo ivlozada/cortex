@@ -33,7 +33,7 @@ class Literal:
     
     def is_ground(self) -> bool:
         """True si no tiene variables (args que empiezan con mayúscula)."""
-        return all(not a[0].isupper() for a in self.args)
+        return all(not (isinstance(a, str) and a and a[0].isupper()) for a in self.args)
     
     def __repr__(self):
         neg = "¬" if self.negated else ""

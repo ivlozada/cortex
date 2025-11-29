@@ -22,7 +22,7 @@ class InferenceEngine:
         
         bindings = {}
         for lit_arg, fact_arg in zip(literal.args, fact_args):
-            if lit_arg[0].isupper():  # Es variable
+            if isinstance(lit_arg, str) and lit_arg and lit_arg[0].isupper():  # Es variable
                 if lit_arg in bindings:
                     if bindings[lit_arg] != fact_arg:
                         return None
@@ -45,6 +45,34 @@ class InferenceEngine:
             
             for bindings in results:
                 ground_literal = literal.ground(bindings)
+                
+                # CORTEX-OMEGA: Built-in operator support
+                if ground_literal.predicate in {">", "<", ">=", "<=", "=", "!="}:
+                    if ground_literal.is_ground():
+                        try:
+                            # Attempt numeric conversion
+                            def to_num(x):
+                                try: return float(x)
+                                except ValueError: return x
+                            
+                            val1 = to_num(ground_literal.args[0])
+                            val2 = to_num(ground_literal.args[1])
+                            
+                            op = ground_literal.predicate
+                            res = False
+                            if op == ">": res = val1 > val2
+                            elif op == "<": res = val1 < val2
+                            elif op == ">=": res = val1 >= val2
+                            elif op == "<=": res = val1 <= val2
+                            elif op == "=": res = val1 == val2
+                            elif op == "!=": res = val1 != val2
+                            
+                            if res:
+                                new_results.append(bindings)
+                        except Exception:
+                            pass # Fail silently on type errors
+                    continue
+
                 
                 if ground_literal.negated:
                     # Negación por fallo: éxito si NO está en los hechos

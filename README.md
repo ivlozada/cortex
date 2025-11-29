@@ -20,6 +20,29 @@ If you retrain a Neural Network to learn a new regulation, it often silently for
 * **Non-Monotonic Plasticity (The "Kill Switch"):** Can unlearn a fundamental axiom in a single cycle without destabilizing the rest of the system.
 * **Hierarchical Logic:** Prioritizes specific exceptions over general rules ("David vs. Goliath" protocol).
 
+* **Hierarchical Logic:** Prioritizes specific exceptions over general rules ("David vs. Goliath" protocol).
+
+### 🏗 Architecture
+
+```mermaid
+graph TD
+    Data[Data Ingestor] -->|Raw Facts| Facts[Fact Store]
+    Facts -->|Context| Engine[Inference Engine]
+    
+    subgraph "The Epistemic Core"
+        Engine -->|Forward Chain| Trace[Derivation Trace]
+        Trace -->|Feedback| Annealer[Rule Annealer]
+        Annealer -->|Crystallize| Rules[Rule Base]
+        Rules -->|Constraints| Axioms[Axiom Store]
+    end
+    
+    Rules -->|Query| Engine
+    
+    style Data fill:#f9f,stroke:#333,stroke-width:2px
+    style Engine fill:#bbf,stroke:#333,stroke-width:2px
+    style Rules fill:#bfb,stroke:#333,stroke-width:2px
+```
+
 ---
 
 ## 📦 Installation
@@ -86,6 +109,32 @@ Unlike LLMs, Cortex guarantees **Isolation**. When the context changes (Kill Swi
 ![Real-Time Plasticity Graph](cortex_live_proof.png)
 
 *Figure 1: Real-time execution trace showing the "Blue Rule" stability vs. the "Red Rule" collapse upon context shift.*
+
+---
+
+## ⚙️ Complexity & Scalability
+
+For engineers considering adoption, here are the rough performance characteristics:
+
+| Metric | Complexity | Notes |
+| :--- | :--- | :--- |
+| **Query Cost** | $O(R \cdot D)$ | Where $R$ is active rules, $D$ is max depth. |
+| **Memory** | $O(F + R)$ | Linear with facts and rules. |
+| **Learning** | $O(N \cdot R)$ | Online learning scales linearly with new data points. |
+
+*Typical values: < 10ms query latency for 10k rules.*
+
+## ⚠️ Limitations
+
+**Cortex shines when:**
+* You have medium-scale tabular or event data.
+* Explicit exceptions and auditability are critical (Fraud, Policy, Routing).
+* You need to "unlearn" specific rules instantly.
+
+**Cortex is NOT ideal when:**
+* Processing raw high-dimensional sensory input (Images, Audio).
+* You need end-to-end deep representation learning.
+* *Use a Neural Network for perception, and Cortex for reasoning.*
 
 ---
 

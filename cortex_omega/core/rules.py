@@ -37,7 +37,7 @@ class Literal:
     
     def __repr__(self):
         neg = "¬" if self.negated else ""
-        return f"{neg}{self.predicate}({', '.join(self.args)})"
+        return f"{neg}{self.predicate}({', '.join(str(a) for a in self.args)})"
 
 
 @dataclass

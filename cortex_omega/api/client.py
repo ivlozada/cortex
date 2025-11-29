@@ -11,6 +11,7 @@ from ..core.rules import RuleBase, FactBase, Literal, Rule
 from ..core.values import ValueBase, Axiom
 from ..core.hypothesis import HypothesisGenerator
 from ..core.inference import Proof
+from ..core.errors import DataFormatError, RuleParseError, CortexError
 
 from ..io.ingestor import SmartIngestor
 import time
@@ -71,9 +72,15 @@ class Cortex:
         
         Raises:
             FileNotFoundError: If the file path is invalid.
+            DataFormatError: If the file format is not supported.
         """
         logger.info(f"🧠 Cortex is absorbing knowledge from '{source}'...")
-        scenes = self.ingestor.ingest(source)
+        try:
+            scenes = self.ingestor.ingest(source)
+        except Exception as e:
+            if isinstance(e, FileNotFoundError):
+                raise
+            raise DataFormatError(f"Failed to ingest data from {source}: {str(e)}") from e
         
         start_time = time.time()
         for i, scene in enumerate(scenes):
@@ -88,13 +95,13 @@ class Cortex:
         logger.info(f"📚 Learned {len(self.theory.rules)} rules.")
 
         
-    def _sanitize_value(self, val: Any) -> Any:
+    def _sanitize_value(self, val):
         """
-        Ensures that capitalized strings are treated as constants by quoting them.
+        Normalizes values to strings for symbolic processing.
         """
-        if isinstance(val, str) and val and val[0].isupper():
-            return f"'{val}'"
-        return val
+        if isinstance(val, bool):
+            return str(val).lower()
+        return str(val)
 
     def absorb_memory(self, data: List[Dict[str, Any]], target_label: str):
         """
@@ -123,6 +130,7 @@ class Cortex:
             target_entity = item.get("id", "obj") # Use ID if available
             
             for key, val in item.items():
+                if key == "id": continue
                 if key in exclude_keys: continue
                 val = self._sanitize_value(val)
                 
@@ -131,7 +139,7 @@ class Cortex:
                 self.facts.add(key, (target_entity, val))
                 
                 # CORTEX-OMEGA: Smart Boolean Handling
-                if val is True:
+                if val == "true":
                     # Add arity-1 fact: predicate(entity)
                     facts.add(key, (target_entity,))
                     self.facts.add(key, (target_entity,))
@@ -161,6 +169,7 @@ class Cortex:
         Queries the engine with a set of observations.
         Example: brain.query(mass="heavy", type="guest", target="fraud")
         """
+        print("DEBUG: ENTERING QUERY")
         # 1. Construct a temporary scene/facts from kwargs
         # Start with persistent facts
         import copy
@@ -173,7 +182,19 @@ class Cortex:
             if key == "target": continue
             if key == "id": continue # Don't add ID as a property of itself
             val = self._sanitize_value(val)
+            
+            # Standard Fact: predicate(entity, value)
             facts.add(key, (entity, val))
+            
+            # Smart Boolean Handling (Consistency with absorb_memory)
+            if val == "true":
+                # Add arity-1 fact: predicate(entity)
+                facts.add(key, (entity,))
+                
+                # Handle is_ prefix
+                if key.startswith("is_"):
+                    stripped = key[3:]
+                    facts.add(stripped, (entity,))
             
         # 2. Run inference
         from ..core.inference import InferenceEngine
@@ -268,9 +289,16 @@ class Cortex:
         """
         Manually adds a rule to the theory.
         Example: brain.add_rule("fraud(X) :- transaction(X, amount, V), V > 10000")
+        
+        Raises:
+            RuleParseError: If the rule string is invalid.
         """
         from ..core.rules import parse_rule
-        rule = parse_rule(rule_str)
+        try:
+            rule = parse_rule(rule_str)
+        except Exception as e:
+            raise RuleParseError(f"Invalid rule string '{rule_str}': {str(e)}") from e
+            
         self.theory.add(rule)
         logger.info(f"🔧 Rule added: {rule}")
 

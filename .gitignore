@@ -48,3 +48,4 @@ generate_live_graph.py
 .idea/
 reproduce_*.py
 reproduce_*.py
+*.csv

@@ -35,7 +35,7 @@ def test_meta_engineer():
     # We pass the facts explicitly to query to simulate a new observation matching the rule
     result_1 = brain.query(amount=60000, status="unverified", target="review_required")
     print(f"   Prediction: {result_1.prediction} (Confidence: {result_1.confidence:.2f})")
-    print(f"   Reasoning:  {result_1.axiom}")
+    print(f"   Reasoning:  {result_1.explanation}")
 
     # Case 2: Low Value + Verified
     print("\n   Query: Amount=10000, Status=verified")

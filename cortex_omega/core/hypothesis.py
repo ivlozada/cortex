@@ -99,38 +99,38 @@ class DiscriminativeFeatureSelector:
         total_pos = 0
         total_neg = 0
         
-        relevant_scenes = [s for s in ctx.memory if s.target_predicate == ctx.target_predicate]
+        # CORTEX-OMEGA v1.4: Confounder Invariance
+        # We need to check if feature correlation is stable across time/splits.
+        relevant_scenes = [s for s in ctx.memory if s.ground_truth is not None]
         
         if not relevant_scenes:
             return []
             
-        for scene in relevant_scenes:
-            is_positive = scene.ground_truth
+        for s in relevant_scenes:
+            is_positive = s.ground_truth
             if is_positive:
                 total_pos += 1
             else:
                 total_neg += 1
                 
-            # Extract features of the target entity in this scene
-            ent = scene.target_entity
-            for pred, args_set in scene.facts.facts.items():
+            for pred, args_set in s.facts.facts.items():
                 for args in args_set:
-                    if ent in args:
-                        # Simple unary/binary property check
-                        val = "true"
-                        if len(args) == 2 and args[0] == ent:
-                            val = args[1]
-                        elif len(args) == 1:
-                            val = "true"
+                    # Handle unary/binary/n-ary
+                    # For unary: args=(entity,) -> val=True (implicitly)
+                    # For binary: args=(entity, val) -> val=val
+                    if len(args) == 1:
+                        val = "true" # Unary predicate presence
+                    else:
+                        val = str(args[1]) # Value
                         
-                        key = (pred, val)
-                        if key not in stats:
-                            stats[key] = {"pos": 0, "neg": 0}
+                    key = (pred, val)
+                    if key not in stats:
+                        stats[key] = {"pos": 0, "neg": 0}
                         
-                        if is_positive:
-                            stats[key]["pos"] += 1
-                        else:
-                            stats[key]["neg"] += 1
+                    if is_positive:
+                        stats[key]["pos"] += 1
+                    else:
+                        stats[key]["neg"] += 1
                             
         # 2. Calculate Scores
         # Score = |P(Pos|Feature) - P(Pos)|
@@ -139,7 +139,7 @@ class DiscriminativeFeatureSelector:
         
         scores = {} # predicate -> max_score (we care if the predicate is useful)
         
-        for (pred, val), counts in stats.items():
+        for (pred, val), counts in sorted(stats.items()):
             n_feat = counts["pos"] + counts["neg"]
             if n_feat < 3: continue # Ignore rare features (noise)
             
@@ -178,14 +178,18 @@ class DiscriminativeFeatureSelector:
                         for p, args_set in s.facts.facts.items():
                             if p == pred:
                                 for args in args_set:
-                                    if len(args) == 2 and args[0] == ent and args[1] == val:
+                                    # Check value match
+                                    v = "true"
+                                    if len(args) > 1: v = str(args[1])
+                                    if v == val:
                                         has_feat = True
-                                    elif len(args) == 1 and args[0] == ent and val == "true":
-                                        has_feat = True
+                                        break
+                            if has_feat: break
+                        
                         if has_feat:
                             l_feat_total += 1
                             if s.ground_truth: l_feat_pos += 1
-                    
+                            
                     if l_feat_total == 0: return 0.0
                     l_base = l_pos / len(scenes) if scenes else 0.5
                     l_prob = l_feat_pos / l_feat_total
@@ -194,9 +198,11 @@ class DiscriminativeFeatureSelector:
                 impact_early = get_local_impact(early_scenes)
                 impact_late = get_local_impact(late_scenes)
                 
-                # Stability: 1.0 if identical, 0.0 if max divergence
-                # We penalize variance.
-                stability = 1.0 - abs(impact_early - impact_late)
+                # Stability penalty: if impact drops significantly, penalize
+                stability = 1.0
+                if impact_early > 0.1 and impact_late < 0.05:
+                    stability = 0.2 # Penalize unstable features
+                
                 score *= stability
                 # logger.debug(f"Feature {pred}={val} Stability={stability:.2f} (Early={impact_early:.2f}, Late={impact_late:.2f})")
             
@@ -258,6 +264,11 @@ class DiscriminativeFeatureSelector:
                             
         # 2. Find best split for each predicate
         for pred, data in numeric_data.items():
+            # Sort by value
+            data.sort(key=lambda x: x[0])
+            
+            best_score = -1.0
+            best_split = None
             if len(data) < 5: continue # Need enough data
             
             data.sort(key=lambda x: x[0])
@@ -301,11 +312,6 @@ class DiscriminativeFeatureSelector:
                 if score_gt > best_score and score_gt > self.min_score:
                     best_score = score_gt
                     best_split = (pred, ">", threshold, score_gt)
-                
-                if score_le > best_score and score_le > self.min_score:
-                    best_score = score_le
-                    best_split = (pred, "<=", threshold, score_le)
-            
             if best_split:
                 splits.append(best_split)
                 
@@ -465,9 +471,11 @@ class HeuristicGenerator:
                         f"{op}({var_name}, {threshold})"
                     ]
                 },
-                confidence=score * 0.8, # Slightly lower confidence than pure structural
+                confidence=score * 1.2, # Boost confidence to prioritize numeric splits over generic variables
                 explanation=f"Requiere {pred} {op} {threshold:.2f}"
             )
+            patches.append(patch)
+            
             patches.append(patch)
             
         return patches
@@ -538,6 +546,7 @@ class HeuristicGenerator:
                                 
                                 # Check if v1 > v2 holds for at least one grounding in this positive
                                 satisfied_in_s = False
+
                                 for pb in pos_bindings_list:
                                     try:
                                         pval1 = float(pb.get(v1, "0"))
@@ -1784,14 +1793,16 @@ class HypothesisGenerator:
         
         return diagnosis
     
-    def generate(self, ctx: FailureContext, top_k: int = 5, beam_width: int = 3) -> List[Tuple[Patch, Rule, List[Rule]]]:
+    def generate(self, ctx: FailureContext, top_k: int = 5, beam_width: int = 1) -> List[Tuple[Patch, Rule, List[Rule]]]:
         """
-        Genera top-k candidatos de parche con sus reglas resultantes.
-        
-        Retorna:
-            Lista de (patch, regla_modificada, reglas_auxiliares)
+        Genera candidatos de parche para corregir el error en el contexto dado.
         """
         import math
+        import sys
+        
+
+        # 0. Extract Features
+        features = self.feature_extractor.extract(ctx)
         
         # Si beam_width > 1, usar búsqueda en haz
         # ABLATION: Force greedy if strategy is 'greedy'
@@ -1799,7 +1810,6 @@ class HypothesisGenerator:
             candidates = self.beam_search(ctx, beam_width=beam_width)
         else:
             # Modo legacy / greedy
-            features = self.feature_extractor.extract(ctx)
             
             # CORTEX-OMEGA: Get priorities
             priorities = self.crystallizer.get_priorities(features)
@@ -1818,6 +1828,8 @@ class HypothesisGenerator:
             all_raw_candidates = analogical_candidates + raw_candidates
             
             candidates = []
+            seen_rules = set()
+            
             for patch in all_raw_candidates:
                 # CORTEX-OMEGA: Structural Gradient
                 # Gradient = Confidence / (1 + lambda * Cost)
@@ -1830,6 +1842,11 @@ class HypothesisGenerator:
                 
                 try:
                     new_rule, aux_rules = self.patch_applier.apply(ctx.rule, patch)
+                    rule_str = str(new_rule)
+                    if rule_str in seen_rules:
+                        continue
+                    seen_rules.add(rule_str)
+                    
                     candidates.append((patch, new_rule, aux_rules))
                 except Exception:
                     continue

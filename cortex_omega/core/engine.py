@@ -51,6 +51,7 @@ def find_worst_error(theory: RuleBase, memory: List[Scene], axioms: ValueBase) -
     
     for s in memory:
         pred, _ = infer(theory, s)
+        # print(f"DEBUG: Checking scene {s.id}, GT={s.ground_truth}, Pred={pred}")
         if pred and not s.ground_truth:
             # False Positive
             first_fp = s
@@ -59,7 +60,7 @@ def find_worst_error(theory: RuleBase, memory: List[Scene], axioms: ValueBase) -
             # False Negative
             if not first_fn:
                 first_fn = s
-                
+    
     if first_fp:
         return first_fp
     return first_fn
@@ -88,7 +89,7 @@ def update_theory_kernel(
     # 2. Refuerzo / Castigo
     # Actualizar estadísticas de uso y fiabilidad
     is_correct = (prediction == scene.ground_truth)
-    update_rule_stats(theory, trace, is_correct)
+    update_rule_stats(theory, trace, is_correct, config)
     
     # Legacy calls removed (reward_rules, punish_rules) as update_rule_stats handles everything.
         
@@ -155,25 +156,17 @@ def update_theory_kernel(
     best_harmony = score_harmony(theory, eval_scenes, config.lambda_complexity, entropy_map)
     
     best_harmony = score_harmony(theory, eval_scenes, config.lambda_complexity, entropy_map)
-    logger.debug(f"Initial Harmony: {best_harmony:.4f}")
     
-    logger.debug(f"DEBUG: Initial Harmony: {best_harmony:.4f}")
-    logger.debug(f"DEBUG: Candidates generated: {len(candidate_theories)}")
-
     # 4. Búsqueda de la mejor teoría que respete axiomas y mejore armonía
     best_patch = None
     
     for i, (T_candidate, patch) in enumerate(candidate_theories):
         # 4a. Restricción dura: axiomas
         if violates_axioms(T_candidate, axioms, eval_scenes):
-            logger.debug(f"DEBUG: Candidate {i} violated axioms.")
             continue
 
         # 4b. Recalcular armonía global
         h_new = score_harmony(T_candidate, eval_scenes, config.lambda_complexity, entropy_map)
-        logger.debug(f"Candidate {i} Harmony: {h_new:.4f} (Rules={len(T_candidate.rules)})")
-        for r in T_candidate.rules.values():
-            logger.debug(f"  - {r}")
 
         accepted = False
         if h_new > best_harmony:
@@ -221,11 +214,11 @@ def update_theory_kernel(
     
     # 5. Refinement Loop (Fix Regressions on Memory)
     # This is crucial for fixing False Positives introduced by generalization (e.g. Temporal Learning)
-    # 5. Refinement Loop (Fix Regressions on Memory)
-    # This is crucial for fixing False Positives introduced by generalization (e.g. Temporal Learning)
     MAX_REFINEMENT_STEPS = 3
+    refinement_candidates = []
     for i in range(MAX_REFINEMENT_STEPS):
-        worst_scene = find_worst_error(best_theory, memory, axioms)
+        worst_scene = find_worst_error(best_theory, new_memory, axioms)
+        
         if not worst_scene:
             break
             
@@ -268,6 +261,9 @@ def update_theory_kernel(
             best_theory = best_refinement_theory
         else:
             break
+            
+    if not refinement_candidates:
+         pass
 
     # CORTEX-OMEGA: Garbage Collection (Periodic)
     # For now, run every time (it's cheap).
@@ -344,63 +340,7 @@ def infer(theory: RuleBase, scene: Scene):
 
 # ... (update_theory_kernel signature needs update too, but let's do punish_rules first)
 
-def punish_rules(theory: RuleBase, trace: List[Dict], target_predicate: str, ground_truth: bool, config: KernelConfig = None):
-    """
-    Punishes rules that contributed to an incorrect prediction.
-    CORTEX-OMEGA v1.3: Selective Punishment.
-    
-    Modes:
-    - "robust": Standard Bayesian update (failure_count += 1). Resilient to noise.
-    - "strict": Harsh punishment (failure_count = 1_000_000). Single counter-example kills the rule.
-    """
-    mode = config.mode if config else "robust"
-    punished = set()
-    
-    for step in trace:
-        if step["type"] == "derivation":
-            rid = step["rule_id"]
-            derived_lit = step["derived"]
-            
-            pred_name = derived_lit.predicate
-            is_negated = derived_lit.negated
-            
-            should_punish = False
-            
-            # Case 1: Rule derived Positive, but GT is Negative (False Positive)
-            if not is_negated and pred_name == target_predicate:
-                if not ground_truth:
-                    should_punish = True
-                    
-            # Case 2: Rule derived Negative, but GT is Positive (False Negative)
-            # Note: Negative derivation can be explicit "NOT_pred" or negated literal "pred"
-            elif (is_negated and pred_name == target_predicate) or pred_name == f"NOT_{target_predicate}":
-                if ground_truth:
-                    should_punish = True
-            
-            if should_punish:
-                if rid in theory.rules and rid not in punished:
-                    rule = theory.rules[rid]
-                    
-                    # CORTEX-OMEGA v1.3: Mode-based Punishment
-                    if mode == "strict":
-                        # Strict Mode: Zero Tolerance.
-                        # Set failure count to a massive number to force confidence -> 0.0
-                        rule.failure_count = 1_000_000
-                        logger.info(f"💀 STRICT MODE: Rule {rid} killed due to counter-example.")
-                    else:
-                        increment = 1 # Standard Bayesian update
-                        rule.failure_count += increment
-                    
-                    # rule.fires_neg is now handled in update_rule_stats
-                    
-                    # Bayesian Update: Mean of Beta(s+1, f+1)
-                    s = rule.support_count
-                    f = rule.failure_count
-                    
-                    # New Confidence
-                    rule.confidence = (s + 1.0) / (s + f + 2.0)
-                    
-                    punished.add(rid)
+
 
 def reward_rules(theory: RuleBase, trace: List[Dict], target_predicate: str, ground_truth: bool, reward: float = 0.1):
     """
@@ -440,7 +380,7 @@ def reward_rules(theory: RuleBase, trace: List[Dict], target_predicate: str, gro
 
 
 
-def update_rule_stats(theory: RuleBase, trace: List[Dict], is_correct: bool):
+def update_rule_stats(theory: RuleBase, trace: List[Dict], is_correct: bool, config: Optional[KernelConfig] = None):
     """
     CORTEX-OMEGA v1.4: First-Class Rule Statistics.
     Updates fires_pos, fires_neg, support, failure, and confidence for ALL firing rules.
@@ -457,7 +397,14 @@ def update_rule_stats(theory: RuleBase, trace: List[Dict], is_correct: bool):
                     rule.support_count += 1
                 else:
                     rule.fires_neg += 1
-                    rule.failure_count += 1
+                    
+                    # CORTEX-OMEGA v1.3: Mode-based Punishment
+                    mode = config.mode if config else "robust"
+                    if mode == "strict":
+                        rule.failure_count = 1_000_000
+                        logger.info(f"💀 STRICT MODE: Rule {rid} killed due to counter-example.")
+                    else:
+                        rule.failure_count += 1
                 
                 # Bayesian Update
                 s = rule.support_count
@@ -717,24 +664,20 @@ def evaluate_f1(theory: RuleBase, scenes: List[Scene]) -> float:
         else:
             target_lit = Literal(s.target_predicate, (s.target_entity,))
             
-        # CORTEX-OMEGA v1.3: Conflict Resolution in Evaluation too
-        # We need to match the logic in 'infer'
-        neg_target_lit = Literal(f"NOT_{s.target_predicate}", target_lit.args)
-        
+        # CORTEX-OMEGA v1.3: Conflict Resolution (Holographic Logic)
+        # Check for both Positive and Negative derivations
         pos_proof = engine.get_proof(target_lit)
-        neg_proof = engine.get_proof(neg_target_lit)
         
-        # logger.debug(f"Pos Proof for {target_lit}: {pos_proof}")
-        # logger.debug(f"Neg Proof for {neg_target_lit}: {neg_proof}")
-
+        neg_target = Literal(f"NOT_{s.target_predicate}", (s.target_entity,))
+        neg_proof = engine.get_proof(neg_target)
+        
         prediction = False
-        explanation = "No rule fired."
-        trace = []
+        trace = getattr(engine, "trace", [])
         
         if pos_proof and not neg_proof:
             prediction = True
             trace = pos_proof.steps
-        elif neg_proof and not pos_proof:
+        elif not pos_proof and neg_proof:
             prediction = False
             trace = neg_proof.steps
         elif pos_proof and neg_proof:

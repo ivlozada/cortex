@@ -16,7 +16,7 @@ class BenchmarkILP(unittest.TestCase):
         data = data * 5
         
         start = time.time()
-        brain = Cortex(sensitivity=0.1)
+        brain = Cortex(sensitivity=0.01)
         brain.absorb_memory(data, target_label="target")
         end = time.time()
         
@@ -34,36 +34,60 @@ class BenchmarkILP(unittest.TestCase):
         self.assertEqual(correct, 4)
 
     def test_benchmark_grandparent(self):
-        """Learn Grandparent relation."""
-        data = [
-            # Family 1
-            {"father": "abraham", "child": "isaac", "target": "false"},
-            {"father": "isaac", "child": "jacob", "target": "false"},
-            {"grandparent": "abraham", "grandchild": "jacob", "target": "true"},
-            
-            # Family 2
-            {"father": "tywin", "child": "cersei", "target": "false"},
-            {"father": "cersei", "child": "joffrey", "target": "false"},
-            {"grandparent": "tywin", "grandchild": "joffrey", "target": "true"},
-        ]
+        """Learn Grandparent relation (Relational)."""
+        from cortex_omega.core.rules import FactBase, Scene
+        from cortex_omega.core.engine import update_theory_kernel, KernelConfig
+        
+        # Construct relational memory manually
+        memory = []
+        
+        # Family 1: A->B->C
+        fb1 = FactBase()
+        fb1.add("parent", ("a", "b"))
+        fb1.add("parent", ("b", "c"))
+        s1 = Scene("s1", fb1, "a", "grandparent", ground_truth=True, target_args=("a", "c"))
+        memory.append(s1)
+        
+        # Family 2: D->E->F
+        fb2 = FactBase()
+        fb2.add("parent", ("d", "e"))
+        fb2.add("parent", ("e", "f"))
+        s2 = Scene("s2", fb2, "d", "grandparent", ground_truth=True, target_args=("d", "f"))
+        memory.append(s2)
+        
+        # Negative: G->H
+        fb3 = FactBase()
+        fb3.add("parent", ("g", "h"))
+        s3 = Scene("s3", fb3, "g", "grandparent", ground_truth=False, target_args=("g", "h"))
+        memory.append(s3)
         
         start = time.time()
         brain = Cortex(sensitivity=0.1)
-        brain.absorb_memory(data, target_label="target")
+        
+        # Manually train kernel
+        theory = brain.theory
+        memory_buffer = []
+        config = brain.config
+        
+        for s in memory:
+            theory, memory_buffer = update_theory_kernel(theory, s, memory_buffer, brain.axioms, config)
+            
+        brain.theory = theory
         end = time.time()
         
         print(f"\n[Benchmark] Grandparent Time: {end - start:.4f}s")
         
-        # Test generalization
-        # If we add a new chain, does it infer?
-        brain.absorb_memory([
-            {"father": "chronos", "child": "zeus", "target": "false"},
-            {"father": "zeus", "child": "hercules", "target": "false"},
-        ], target_label="target")
+        # Test generalization: Chronos->Zeus->Hercules
+        fb_test = FactBase()
+        fb_test.add("parent", ("chronos", "zeus"))
+        fb_test.add("parent", ("zeus", "hercules"))
+        s_test = Scene("s_test", fb_test, "chronos", "grandparent", ground_truth=True, target_args=("chronos", "hercules"))
         
-        res = brain.query(grandparent="chronos", grandchild="hercules", target="target")
-        print(f"[Benchmark] Grandparent Generalization: {res.prediction}")
-        self.assertTrue(res.prediction)
+        from cortex_omega.core.engine import infer
+        prediction, trace = infer(brain.theory, s_test)
+        
+        print(f"[Benchmark] Grandparent Generalization: {prediction}")
+        self.assertTrue(prediction)
 
 if __name__ == '__main__':
     unittest.main()

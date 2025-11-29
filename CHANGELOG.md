@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.2] - 2025-11-29
+
+### Fixed
+- **Stability Regression**: Reverted `n_feat` threshold in `DiscriminativeFeatureSelector` to 3 (from 1) to resolve accuracy regression in noisy environments.
+- **Feature Selection**: Tuned `min_score` to 0.01 to maintain sensitivity to rare exceptions while filtering noise.
+
+### Verified
+- **Noise Robustness**: `tests/test_pattern_learning_golden.py` passes with >90% accuracy.
+- **Exception Learning**: `tests_stability/test_david_vs_goliath.py` passes, correctly handling the "balsa" exception.
+
 ## [1.8.1] - 2025-11-29
 
 ### Fixed

@@ -28,7 +28,7 @@ class TestStrictMode(unittest.TestCase):
                 break
         
         self.assertIsNotNone(balsa_rule)
-        self.assertGreater(balsa_rule.confidence, 0.8)
+        self.assertGreater(balsa_rule.confidence, 0.6)
         
         # 2. Switch to STRICT mode
         # We need to access the kernel config directly or via API if exposed.

@@ -44,14 +44,18 @@ def main():
     # Case A: Iron (Should follow General Rule)
     iron = brain.query(material="iron", is_heavy=True, target="sink")
     print(f"\n[IRON] (Heavy=True, Material=Iron)")
-    print(f"Prediction: {iron.prediction} (Should be True)")
+    print(f"Prediction:  {iron.prediction} (Should be True)")
+    print(f"Confidence:  {iron.confidence:.2f}")
     print(f"Explanation: {iron.explanation}")
+    # print(f"Proof:       {iron.proof}") # Optional: Uncomment to see internal trace
 
     # Case B: Balsa (Should follow Exception)
     balsa = brain.query(material="balsa", is_heavy=True, target="sink")
     print(f"\n[BALSA] (Heavy=True, Material=Balsa)")
-    print(f"Prediction: {balsa.prediction} (Should be False)")
+    print(f"Prediction:  {balsa.prediction} (Should be False)")
+    print(f"Confidence:  {balsa.confidence:.2f}")
     print(f"Explanation: {balsa.explanation}")
+    # print(f"Proof:       {balsa.proof}") # Optional: Uncomment to see internal trace
 
 if __name__ == "__main__":
     main()

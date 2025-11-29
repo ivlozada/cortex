@@ -74,7 +74,7 @@ brain.absorb("financial_chaos_logs.csv")
 result = brain.query(type="guest", amount="heavy")
 
 print(f"Prediction: {result.prediction}") # Output: True
-print(f"Logic Trace: {result.axiom}")      # Output: Rule_Gen_2 (Conf: 1.0)
+print(f"Logic Trace: {result.explanation}") # Output: Rule_Gen_2 (Conf: 1.0)
 ```
 
 ```

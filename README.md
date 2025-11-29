@@ -21,6 +21,7 @@ If you retrain a Neural Network to learn a new regulation, it often silently for
 * **Hierarchical Logic:** Prioritizes specific exceptions over general rules ("David vs. Goliath" protocol).
 
 * **Hierarchical Logic:** Prioritizes specific exceptions over general rules ("David vs. Goliath" protocol).
+* **Holographic Logic (v1.3):** Uses Bayesian scoring and shadow rules to handle noise and confounders without losing generalization.
 
 ### 🏗 Architecture
 

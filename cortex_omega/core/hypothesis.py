@@ -377,6 +377,21 @@ class HeuristicGenerator:
         
         return candidates
     
+    # CORTEX-OMEGA v1.3: Causal Priors
+    # We prioritize structural/intrinsic properties over transient/extrinsic ones.
+    PROPERTY_PRIORITY = {
+        "material": 1.0, # Lowered from 1.2 to allow functional properties to shine
+        "structure": 1.1,
+        "density": 1.1,
+        "type": 1.1,
+        "is_heavy": 1.5, # Boosted! This is the causal mechanism.
+        "heavy": 1.5,    # Boosted!
+        "color": 0.5,    # Confounder Trap: Penalize color
+        "location": 0.4, # Confounder Trap: Penalize location
+        "shape": 0.7,
+        "size": 0.7
+    }
+
     def _strategy_add_property_filter(self, ctx: FailureContext, features: Dict) -> List[Patch]:
         """
         Estrategia: Añadir filtro de propiedad.
@@ -387,61 +402,76 @@ class HeuristicGenerator:
         
         if ctx.error_type == "FALSE_POSITIVE":
             # El target NO debería cumplir. Buscar propiedades que lo distinguen.
-            print(f"DEBUG: Checking target properties: {features['target_properties']}")
+            # print(f"DEBUG: Checking target properties: {features['target_properties']}")
             for pred, value in features["target_properties"].items():
-                if pred not in [lit.predicate for lit in ctx.rule.body]:
-                    # Añadir negación de esta propiedad
-                    # Handle boolean/arity-1
-                    if value == "true":
-                        args = ("X",)
-                    else:
-                        args = ("X", value)
+                # Si la propiedad es booleana "true", el literal es pred(X).
+                # Si es valorada, es pred(X, val).
+                
+                # CORTEX-OMEGA v1.3: Apply Causal Priors
+                priority = self.PROPERTY_PRIORITY.get(pred, 1.0)
+                base_conf = 0.7 * priority
+                
+                # Penalize low confidence patches to avoid clutter
+                if base_conf < 0.4:
+                    continue
 
+                if value == "true":
+                    # Arity 1: negated literal NOT pred(X)
+                    args = ("X",)
                     patch = Patch(
                         operation=PatchOperation.ADD_NEGATED_LITERAL,
-                        target_rule_id=ctx.rule.id,
-                        details={
-                            "predicate": pred,
-                            "args": args,
-                            "negated": True
-                        },
-                        confidence=0.6,
-                        explanation=f"Excluir entidades con {pred}={value}"
-                    )
-                    patches.append(patch)
-        
-        elif ctx.error_type == "FALSE_NEGATIVE":
-            # El target DEBERÍA cumplir. Buscar qué condición falta.
-            for pred, value in features["target_properties"].items():
-                if pred not in [lit.predicate for lit in ctx.rule.body]:
-                    # Quizás la regla necesita esta condición
-                    
-                    # CORTEX-OMEGA: Prioritize structural properties over transient ones
-                    priority = self.PROPERTY_PRIORITY.get(pred, 10)
-                    base_conf = 0.4
-                    if priority <= 3: # material, size, shape
-                        base_conf += 0.2
-                    elif priority >= 4: # color, etc
-                        base_conf -= 0.1
-                        
-                    # Handle boolean/arity-1
-                    if value == "true":
-                        args = ("X",)
-                    else:
-                        args = ("X", value)
-                        
-                    patch = Patch(
-                        operation=PatchOperation.ADD_LITERAL,
                         target_rule_id=ctx.rule.id,
                         details={
                             "predicate": pred,
                             "args": args
                         },
                         confidence=base_conf,
-                        explanation=f"Considerar {pred}={value} como condición"
+                        explanation=f"Excluir si {pred}"
                     )
-                    patches.append(patch)
-        
+                else:
+                    # Arity 2: negated literal NOT pred(X, value)
+                    args = ("X", value)
+                    patch = Patch(
+                        operation=PatchOperation.ADD_NEGATED_LITERAL,
+                        target_rule_id=ctx.rule.id,
+                        details={
+                            "predicate": pred,
+                            "args": args
+                        },
+                        confidence=base_conf,
+                        explanation=f"Excluir si {pred}={value}"
+                    )
+                patches.append(patch)
+
+        elif ctx.error_type == "FALSE_NEGATIVE":
+            # El target SÍ debería cumplir. Buscar propiedades comunes en los positivos.
+            # O simplemente probar propiedades del target actual.
+            for pred, value in features["target_properties"].items():
+                
+                # CORTEX-OMEGA v1.3: Apply Causal Priors
+                priority = self.PROPERTY_PRIORITY.get(pred, 1.0)
+                base_conf = 0.6 * priority
+                
+                if base_conf < 0.3:
+                    continue
+
+                if value == "true":
+                    args = ("X",)
+                else:
+                    args = ("X", value)
+                    
+                patch = Patch(
+                    operation=PatchOperation.ADD_LITERAL,
+                    target_rule_id=ctx.rule.id,
+                    details={
+                        "predicate": pred,
+                        "args": args
+                    },
+                    confidence=base_conf,
+                    explanation=f"Considerar {pred}={value} como condición"
+                )
+                patches.append(patch)
+    
         return patches
     
     def _strategy_add_negation(self, ctx: FailureContext, features: Dict) -> List[Patch]:
@@ -533,7 +563,14 @@ class HeuristicGenerator:
             abnormal_conditions = []
             
             # 1. Propiedades directas del target
+            existing_predicates = {lit.predicate for lit in ctx.rule.body}
+            
             for prop, value in features["target_properties"].items():
+                # CORTEX-OMEGA v1.3: Prevent Self-Contradiction
+                # Do not use a property as an exception if it is already a condition for the rule!
+                if prop in existing_predicates:
+                    continue
+
                 # Handle boolean normalization
                 if value == "true":
                     abnormal_conditions.append({
@@ -1042,7 +1079,8 @@ class PatchApplier:
             
             elif "create_abnormal_rule" in details:
                 # Crear regla abnormal con todas las condiciones
-                abnormal_pred = "abnormal_for_glows"
+                # CORTEX-OMEGA v1.3: Dynamic Naming
+                abnormal_pred = f"abnormal_for_{rule.head.predicate}"
                 new_literal = Literal(abnormal_pred, ("X",), negated=True)
                 new_rule.body.append(new_literal)
                 

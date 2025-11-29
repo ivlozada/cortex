@@ -1,5 +1,22 @@
 # Release Notes
 
+## v1.3.0: The "Holographic Logic" Upgrade (2025-11-29)
+**Major Feature Update**
+
+This release introduces the **Holographic Logic** architecture, transforming Cortex-Omega into a probabilistic neuro-symbolic engine capable of robust reasoning in noisy, complex environments.
+
+### 🌟 New Features
+- **Bayesian Rule Scoring**: Replaced binary confidence with Beta Distribution scoring, allowing rules to survive noise and degrade gracefully.
+- **Holographic Conflict Resolution**: Implemented "Shadow Rules" to allow general rules (High Recall) to coexist with specific exceptions (High Precision), solving the "David vs. Goliath" problem in complex hierarchies.
+- **Causal Feature Prioritization**: The engine now penalizes transient properties (e.g., color) in favor of structural ones (e.g., material), effectively ignoring confounders.
+- **Stratified Forward Chaining**: Implemented a 2-phase inference engine to correctly handle "Negation as Failure", ensuring exceptions are derived before they are checked.
+
+### 📈 Performance
+- **Confounder Robustness**: 93.75% Accuracy on the "Color Confounder" stress test.
+- **Noise Tolerance**: >90% Accuracy on 15% noisy data.
+
+---
+
 ## v1.2.6: The "Documentation" Patch (2025-11-28)
 **Documentation Update**
 

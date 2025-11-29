@@ -81,7 +81,7 @@ class ValueBase:
                     break
             
             if all_conditions_met:
-                print(f"DEBUG: Sin detected! {axiom.name}")
+                # print(f"DEBUG: Sin detected! {axiom.name}")
                 return axiom
             
         return None

@@ -43,6 +43,9 @@ def main():
 
     # 3. Query
     # We must provide 'is_heavy=True' in the query because the engine learned that 'heavy' is the cause.
+    print("\n[LEARNED THEORY]")
+    print(brain.theory)
+    
     print("\nStep 3: Testing conflict resolution...")
     
     # Case A: Iron (Should follow General Rule)

@@ -60,74 +60,97 @@ class InferenceEngine:
         return bindings
     
     def evaluate_body(self, body: List[Literal], initial_bindings: Dict[str, str] = None) -> List[Dict[str, str]]:
-        """Evalúa el cuerpo de una regla, retornando todas las sustituciones válidas."""
+        """
+        Evalúa el cuerpo de una regla (conjunción de literales).
+        Retorna una lista de bindings que satisfacen el cuerpo.
+        """
+        if initial_bindings is None:
+            initial_bindings = {}
+            
+        # Base case: empty body -> one success (current bindings)
         if not body:
-            return [initial_bindings or {}]
-        
-        results = [initial_bindings or {}]
-        
-        for literal in body:
-            new_results = []
+            return [initial_bindings]
             
-            for bindings in results:
-                ground_literal = literal.ground(bindings)
-                
-                # CORTEX-OMEGA: Built-in operator support
-                if ground_literal.predicate in {">", "<", ">=", "<=", "=", "!="}:
-                    if ground_literal.is_ground():
-                        try:
-                            # Attempt numeric conversion
-                            def to_num(x):
-                                try: return float(x)
-                                except ValueError: return x
-                            
-                            val1 = to_num(ground_literal.args[0])
-                            val2 = to_num(ground_literal.args[1])
-                            
-                            op = ground_literal.predicate
-                            res = False
-                            if op == ">": res = val1 > val2
-                            elif op == "<": res = val1 < val2
-                            elif op == ">=": res = val1 >= val2
-                            elif op == "<=": res = val1 <= val2
-                            elif op == "=": res = val1 == val2
-                            elif op == "!=": res = val1 != val2
-                            
-                            if res:
-                                new_results.append(bindings)
-                        except Exception:
-                            pass # Fail silently on type errors
-                    continue
-
-                
-                if ground_literal.negated:
-                    # Negación por fallo: éxito si NO está en los hechos
-                    if ground_literal.is_ground():
-                        positive = Literal(ground_literal.predicate, ground_literal.args, False)
-                        if not self.facts.contains(positive):
-                            new_results.append(bindings)
-                    else:
-                        # Variable en negación: falla si existe algún binding
-                        has_match = False
-                        for fact_args in self.facts.query(literal.predicate):
-                            if self.unify(Literal(literal.predicate, literal.args, False), fact_args):
-                                has_match = True
-                                break
-                        if not has_match:
-                            new_results.append(bindings)
-                else:
-                    # Literal positivo: buscar matches
-                    for fact_args in self.facts.query(literal.predicate):
-                        new_bindings = self.unify(ground_literal, fact_args)
-                        if new_bindings is not None:
-                            merged = {**bindings, **new_bindings}
-                            new_results.append(merged)
-            
-            results = new_results
-            if not results:
-                break
+        first = body[0]
+        rest = body[1:]
         
+        results = []
+        
+        # 1. Find bindings for the first literal
+        candidates = self._get_bindings_for_literal(first, initial_bindings)
+        
+        for binding in candidates:
+            # 2. Recursive step
+            # Apply binding to the rest
+            rest_ground = [lit.ground(binding) for lit in rest]
+            
+            rest_results = self.evaluate_body(rest_ground, binding) # Pass current binding
+            
+            for rest_binding in rest_results:
+                # Merge bindings (should be consistent since we passed binding down)
+                combined = {**binding, **rest_binding}
+                results.append(combined)
+                
         return results
+
+    def _get_bindings_for_literal(self, literal: Literal, current_bindings: Dict[str, str]) -> List[Dict[str, str]]:
+        """Helper to find bindings for a single literal, considering current_bindings."""
+        
+        # Apply current_bindings to the literal first
+        ground_literal = literal.ground(current_bindings)
+        
+        # CORTEX-OMEGA: Built-in operator support
+        if ground_literal.predicate in {">", "<", ">=", "<=", "=", "!="}:
+            if ground_literal.is_ground():
+                try:
+                    # Attempt numeric conversion
+                    def to_num(x):
+                        try: return float(x)
+                        except ValueError: return x
+                    
+                    val1 = to_num(ground_literal.args[0])
+                    val2 = to_num(ground_literal.args[1])
+                    
+                    op = ground_literal.predicate
+                    res = False
+                    if op == ">": res = val1 > val2
+                    elif op == "<": res = val1 < val2
+                    elif op == ">=": res = val1 >= val2
+                    elif op == "<=": res = val1 <= val2
+                    elif op == "=": res = val1 == val2
+                    elif op == "!=": res = val1 != val2
+                    
+                    if res:
+                        return [current_bindings] # Success, return current bindings
+                except Exception:
+                    pass # Fail silently on type errors
+            return [] # No match or not ground
+        
+        if ground_literal.negated:
+            # Negación por fallo: éxito si NO está en los hechos
+            if ground_literal.is_ground():
+                positive = Literal(ground_literal.predicate, ground_literal.args, False)
+                if not self.facts.contains(positive):
+                    return [current_bindings] # Success, return current bindings
+            else:
+                # Variable en negación: falla si existe algún binding
+                has_match = False
+                for fact_args in self.facts.query(literal.predicate): # Use original literal for query
+                    if self.unify(Literal(literal.predicate, literal.args, False), fact_args):
+                        has_match = True
+                        break
+                if not has_match:
+                    return [current_bindings] # Success, return current bindings
+            return [] # Match found or not ground
+        else:
+            # Literal positivo: buscar matches
+            found_bindings = []
+            for fact_args in self.facts.query(ground_literal.predicate):
+                new_bindings = self.unify(ground_literal, fact_args)
+                if new_bindings is not None:
+                    merged = {**current_bindings, **new_bindings}
+                    found_bindings.append(merged)
+            return found_bindings
     
     def query(self, literal: Literal, explain: bool = False) -> Tuple[bool, Optional[Dict]]:
         """
@@ -176,53 +199,40 @@ class InferenceEngine:
         log_first_n_iterations: int = 5,
     ) -> Set[Literal]:
         """
-        Inferencia hacia adelante con:
-          - límite de iteraciones (max_iterations)
-          - logging resumido por iteración y por regla
-          - parada por punto fijo (cuando no se derivan hechos nuevos)
+        Ejecuta forward chaining estratificado (Stratified Forward Chaining).
+        Phase 1: Reglas sin negación (Early).
+        Phase 2: Todas las reglas (Late).
         """
         if logger is None:
             import logging
             logger = logging.getLogger(__name__)
 
+        # Stratification
+        early_rules = [r for r in self.rules.rules.values() if not any(l.negated for l in r.body)]
+        all_rules = list(self.rules.rules.values())
+        
         derived = set()
 
-        iteration = 0
-        while True:
-            iteration += 1
-            if iteration > max_iterations:
-                if debug:
-                    logger.warning(
-                        "forward_chain: se alcanzó max_iterations=%d, deteniendo.",
-                        max_iterations,
-                    )
-                break
-
-            iteration_new_facts = [] # Lista de (head, rule_id, bindings)
-            
-            if debug and iteration <= log_first_n_iterations:
-                logger.debug("=== forward_chain iteración %d ===", iteration)
-
-            # Para cada regla, contamos cuántos hechos nuevos genera en ESTA iteración
-            for rule in self.rules.rules.values():
-                rule_new_count = 0
-
-                # Lógica de aplicación de la regla
-                body_results = self.evaluate_body(rule.body)
+        def run_phase(rules_subset, phase_name):
+            iteration = 0
+            while iteration < max_iterations:
+                iteration += 1
+                iteration_new_facts = []
                 
-                for bindings in body_results:
-                    head_ground = rule.head.ground(bindings)
+                # 1. Evaluate rules
+                for rule in rules_subset:
+                    if debug: logger.debug(f"Evaluating rule {rule.id}: {rule}")
+                    rule_new_count = 0
+                    body_results = self.evaluate_body(rule.body)
                     
-                    # Check if already known
-                    already_known = False
-                    if head_ground.negated:
-                        # For explicit negation, check if NOT_predicate exists
-                        explicit_neg = Literal(f"NOT_{head_ground.predicate}", head_ground.args)
-                        already_known = self.facts.contains(explicit_neg)
-                    else:
-                        already_known = self.facts.contains(head_ground)
-
-                    if not already_known and head_ground not in derived:
+                    for bindings in body_results:
+                        head_ground = rule.head.ground(bindings)
+                        
+                        # If head is already in facts, skip
+                        if self.facts.contains(head_ground):
+                            continue
+                        
+                        # Check duplicates in current batch
                         is_duplicate = False
                         for h, _, _ in iteration_new_facts:
                             if h == head_ground:
@@ -232,57 +242,64 @@ class InferenceEngine:
                         if not is_duplicate:
                             iteration_new_facts.append((head_ground, rule.id, bindings))
                             rule_new_count += 1
+                    
+                    # Update usage stats
+                    if rule_new_count > 0:
+                        rule.support_count += 1
+                        s = rule.support_count
+                        f = rule.failure_count
+                        rule.confidence = (s + 1.0) / (s + f + 2.0)
 
-                if debug and iteration <= log_first_n_iterations and rule_new_count > 0:
-                    logger.debug(
-                        "Regla %s produjo %d hechos nuevos en iteración %d.",
-                        rule.id,
-                        rule_new_count,
-                        iteration,
-                    )
-
-            if not iteration_new_facts:
-                if debug:
-                    logger.debug(
-                        "forward_chain: punto fijo alcanzado tras %d iteraciones. Total hechos derivados: %d.",
-                        iteration,
-                        len(derived),
-                    )
-                break
-
-            for head, rule_id, bindings in iteration_new_facts:
-                if head.negated:
-                    # Explicit Negation: Store as "NOT_predicate"
-                    self.facts.add(f"NOT_{head.predicate}", head.args)
-                else:
-                    self.facts.add(head.predicate, head.args)
+                if not iteration_new_facts:
+                    if debug:
+                        logger.debug(
+                            f"forward_chain ({phase_name}): punto fijo alcanzado tras {iteration} iteraciones."
+                        )
+                    break # No new facts derived in this iteration, reach fixed point
                 
-                derived.add(head)
-                
-                # Reconstruct antecedents for provenance
-                antecedents = []
-                for lit in self.rules.rules[rule_id].body:
-                    ground_lit = lit.ground(bindings)
-                    antecedents.append(ground_lit)
+                # 2. Add new facts to the fact base and provenance
+                for head, rule_id, bindings in iteration_new_facts:
+                    fact_added = False
+                    if head.negated:
+                        key = f"NOT_{head.predicate}"
+                        if head.args not in self.facts.facts[key]:
+                            self.facts.add(key, head.args)
+                            fact_added = True
+                    else:
+                        if head.args not in self.facts.facts[head.predicate]:
+                            self.facts.add(head.predicate, head.args)
+                            fact_added = True
+                    
+                    if fact_added:
+                        # Normalize head for provenance
+                        if head.negated:
+                            provenance_head = Literal(f"NOT_{head.predicate}", head.args, negated=False)
+                        else:
+                            provenance_head = head
+                            
+                        # Reconstruct antecedents
+                        antecedents = []
+                        for lit in self.rules.rules[rule_id].body:
+                            ground_lit = lit.ground(bindings)
+                            antecedents.append(ground_lit)
+                            
+                        self.provenance[provenance_head] = (rule_id, bindings, antecedents)
+                    
+                    derived.add(head)
+                    self.trace.append({
+                        "type": "derivation",
+                        "rule_id": rule_id,
+                        "derived": head,
+                        "bindings": bindings
+                    })
 
-                self.provenance[head] = (rule_id, bindings, antecedents)
-
-                self.trace.append({
-                    "type": "derivation",
-                    "rule_id": rule_id,
-                    "derived": head,
-                    "bindings": bindings
-                })
-
-
-            if debug and iteration <= log_first_n_iterations:
-                logger.debug(
-                    "Iteración %d: %d hechos nuevos (total acumulado = %d).",
-                    iteration,
-                    len(iteration_new_facts),
-                    len(derived),
-                )
-
+        # Run Phases
+        if debug: logger.debug("=== Phase 1: Early Rules (No Negation) ===")
+        run_phase(early_rules, "Early")
+        
+        if debug: logger.debug("=== Phase 2: All Rules ===")
+        run_phase(all_rules, "Late")
+        
         return derived
     
     def predict(self, entity: str, target_predicate: str) -> Tuple[bool, List[Dict]]:

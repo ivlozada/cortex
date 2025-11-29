@@ -36,7 +36,7 @@ class Cortex:
         axioms (ValueBase): The repository of established truths.
     """
     
-    def __init__(self, sensitivity: float = 0.1):
+    def __init__(self, sensitivity: float = 0.1, mode: str = "robust"):
         """
         Initializes the Cortex Brain.
 
@@ -44,8 +44,11 @@ class Cortex:
             sensitivity (float): The lambda complexity penalty. 
                                  Higher values make the brain more skeptical of noise.
                                  Defaults to 0.1.
+            mode (str): "robust" (default) or "strict".
+                        "robust": Resilient to noise, requires multiple counter-examples to override.
+                        "strict": Logical purity, single counter-example overrides immediately.
         """
-        self.config = KernelConfig(lambda_complexity=sensitivity)
+        self.config = KernelConfig(lambda_complexity=sensitivity, mode=mode)
         self.theory = RuleBase()
         self.memory = []
         self.axioms = ValueBase()
@@ -169,107 +172,114 @@ class Cortex:
         Queries the engine with a set of observations.
         Example: brain.query(mass="heavy", type="guest", target="fraud")
         """
-        print("DEBUG: ENTERING QUERY")
-        # 1. Construct a temporary scene/facts from kwargs
-        # Start with persistent facts
+        # print("DEBUG: ENTERING QUERY")
+        
+        # 1. Construct a temporary scene from kwargs
+        from ..core.rules import Scene, FactBase
         import copy
+        
+        # Start with persistent facts
         facts = copy.deepcopy(self.facts)
         
-        entity = kwargs.get("id", "query_entity") # Use ID if provided
-        target_pred = kwargs.get("target") # None by default
+        entity = kwargs.get("id", "query_entity")
+        target_pred = kwargs.get("target")
         
         for key, val in kwargs.items():
             if key == "target": continue
-            if key == "id": continue # Don't add ID as a property of itself
+            if key == "id": continue
             val = self._sanitize_value(val)
             
             # Standard Fact: predicate(entity, value)
             facts.add(key, (entity, val))
             
-            # Smart Boolean Handling (Consistency with absorb_memory)
+            # Smart Boolean Handling
             if val == "true":
-                # Add arity-1 fact: predicate(entity)
                 facts.add(key, (entity,))
-                
-                # Handle is_ prefix
                 if key.startswith("is_"):
                     stripped = key[3:]
                     facts.add(stripped, (entity,))
             
-        # 2. Run inference
-        from ..core.inference import InferenceEngine
-        engine = InferenceEngine(facts, self.theory)
-        derived = engine.forward_chain()
+        # Create a temporary Scene
+        scene = Scene(
+            id="query_scene",
+            facts=facts,
+            target_entity=entity,
+            target_predicate=target_pred if target_pred else "unknown",
+            ground_truth=False # Dummy
+        )
         
-        # Determine prediction and explanation
-        prediction = False
+        print(f"DEBUG: Query Facts: {facts.facts}")
+        
+        # 2. Run inference using the Kernel's infer function (which has Conflict Resolution)
+        from ..core.engine import infer
+        from ..core.inference import InferenceEngine, Literal
+        
+        prediction, trace = infer(self.theory, scene)
+        
+        # 3. Extract Explanation and Confidence
         explanation = "No rule fired."
         confidence = 0.0
+        proof = None
         
-        # If target is explicit, check it
-        if target_pred:
-            target_lit = Literal(target_pred, (entity,))
-            prediction = facts.contains(target_lit)
+        # If prediction is True, find the positive proof
+        if prediction:
+            # Re-run get_proof to get the object (infer returns bool, trace)
+            # Ideally infer should return the proof object too, but for now we reconstruct
             
-            # Find explanation
-            trace = engine.trace
+            # Let's just trust the trace for explanation
             for step in reversed(trace):
-                if step["type"] == "derivation" and step["derived"] == target_lit:
-                    rule_id = step["rule_id"]
-                    rule = self.theory.rules.get(rule_id)
-                    if rule:
-                        explanation = str(rule)
-                        confidence = rule.confidence
-                        break
-        else:
-            # Implicit target: Look for ANY derivation
-            trace = engine.trace
-            if trace:
-                # Find the last derivation
-                for step in reversed(trace):
-                    if step["type"] == "derivation":
-                        # Found a rule that fired!
+                if step["type"] == "derivation":
+                    # Check if this derivation matches target
+                    derived = step["derived"]
+                    if target_pred and derived.predicate == target_pred:
                         rule_id = step["rule_id"]
                         rule = self.theory.rules.get(rule_id)
                         if rule:
-                            derived = step.get("derived")
-                            if derived and derived.negated:
-                                prediction = False
-                            else:
-                                prediction = True
-                                
                             explanation = str(rule)
                             confidence = rule.confidence
-                            # We assume the first one we find (last in trace) is the "answer"
                             break
-                            
-        # 3. Explicit Negation Check
-        if not prediction and target_pred:
-            # Check if we derived NOT_target
-            neg_target_lit = Literal(f"NOT_{target_pred}", (entity,))
-            if facts.contains(neg_target_lit):
-                # We have an explicit negative derivation!
-                # Find explanation in trace
-                for step in reversed(engine.trace):
-                    if step["type"] == "derivation" and step["derived"].predicate == f"NOT_{target_pred}":
-                        rule_id = step["rule_id"]
-                        rule = self.theory.rules.get(rule_id)
-                        if rule:
+                    elif not target_pred:
+                         # Implicit target
+                         rule_id = step["rule_id"]
+                         rule = self.theory.rules.get(rule_id)
+                         if rule:
                             explanation = str(rule)
-                            # We keep prediction=False, but provide explanation
+                            confidence = rule.confidence
                             break
                             
-                            
-        # 4. Reconstruct Proof (Traceback)
-        proof = None
-        if prediction and target_pred:
-            target_lit = Literal(target_pred, (entity,))
-            proof = engine.get_proof(target_lit)
-        elif not prediction and target_pred:
-             # Check for explicit negation proof
-             neg_target_lit = Literal(f"NOT_{target_pred}", (entity,))
-             if facts.contains(neg_target_lit):
-                 proof = engine.get_proof(neg_target_lit)
+            # Reconstruct Proof Object
+            if target_pred:
+                # We need an engine instance to call get_proof
+                engine = InferenceEngine(facts, self.theory)
+                engine.forward_chain() # Re-run to populate provenance
+                target_lit = Literal(target_pred, (entity,))
+                proof = engine.get_proof(target_lit)
+                
+        else:
+            # Prediction False. Check for Explicit Negation explanation
+            # infer handles conflict resolution, so if it returned False, 
+            # it might be because NOT_target won.
+            
+            if target_pred:
+                neg_target = f"NOT_{target_pred}"
+                # Check trace for negative derivation
+                for step in reversed(trace):
+                    if step["type"] == "derivation":
+                        derived = step["derived"]
+                        if derived.predicate == neg_target:
+                            rule_id = step["rule_id"]
+                            rule = self.theory.rules.get(rule_id)
+                            if rule:
+                                explanation = str(rule)
+                                confidence = rule.confidence
+                                break
+                
+                # Reconstruct Proof Object for Negation
+                engine = InferenceEngine(facts, self.theory)
+                engine.forward_chain()
+                neg_lit = Literal(neg_target, (entity,))
+                if facts.contains(neg_lit):
+                    proof = engine.get_proof(neg_lit)
 
         return InferenceResult(prediction, explanation, confidence, proof)
 

@@ -10,7 +10,9 @@ logging.getLogger("cortex_omega").setLevel(logging.DEBUG)
 
 class TestRobustness(unittest.TestCase):
     def setUp(self):
-        self.brain = Cortex()
+        # CORTEX-OMEGA v1.3: Use "strict" mode for this test
+        # This test expects a single counter-example to override a general rule.
+        self.brain = Cortex(mode="strict")
 
     def test_conflict_resolution_david_vs_goliath(self):
         """

@@ -10,6 +10,8 @@ from ..core.engine import update_theory_kernel, KernelConfig, infer
 from ..core.rules import RuleBase, FactBase, Literal, Rule
 from ..core.values import ValueBase, Axiom
 from ..core.hypothesis import HypothesisGenerator
+from ..core.inference import Proof
+
 from ..io.ingestor import SmartIngestor
 import time
 
@@ -229,7 +231,20 @@ class Cortex:
                             # We keep prediction=False, but provide explanation
                             break
                             
-        return InferenceResult(prediction, explanation, confidence)
+                            
+        # 4. Reconstruct Proof (Traceback)
+        proof = None
+        if prediction and target_pred:
+            target_lit = Literal(target_pred, (entity,))
+            proof = engine.get_proof(target_lit)
+        elif not prediction and target_pred:
+             # Check for explicit negation proof
+             neg_target_lit = Literal(f"NOT_{target_pred}", (entity,))
+             if facts.contains(neg_target_lit):
+                 proof = engine.get_proof(neg_target_lit)
+
+        return InferenceResult(prediction, explanation, confidence, proof)
+
 
     def context_shift(self, context_name: str):
         """
@@ -260,10 +275,12 @@ class Cortex:
         # TODO: Parse and add to RuleBase/ValueBase
 
 class InferenceResult:
-    def __init__(self, prediction: bool, explanation: str, confidence: float):
+    def __init__(self, prediction: bool, explanation: str, confidence: float, proof: Optional[Proof] = None):
         self.prediction = prediction
         self.explanation = explanation
         self.confidence = confidence
+        self.proof = proof
+
         
     def __repr__(self):
         return f"Result(pred={self.prediction}, conf={self.confidence:.2f})"

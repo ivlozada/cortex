@@ -5,7 +5,30 @@ Forward chaining inference engine with support for negation.
 """
 
 from typing import Dict, List, Set, Tuple, Optional, Any
+from dataclasses import dataclass
 from .rules import Literal, Rule, FactBase, RuleBase
+
+@dataclass
+class ProofStep:
+    """A single step in a logical proof."""
+    derived_fact: Literal
+    rule_id: str
+    rule_str: str
+    bindings: Dict[str, str]
+    antecedents: List[Literal]
+
+@dataclass
+class Proof:
+    """A full logical proof."""
+    steps: List[ProofStep]
+    confidence: float
+
+    def __repr__(self):
+        if not self.steps:
+            return "Proof(Empty)"
+        # Show the chain of derivations
+        return " -> ".join([str(s.derived_fact) for s in self.steps])
+
 
 class InferenceEngine:
     """Motor de inferencia: forward chaining con soporte para negación."""
@@ -14,6 +37,9 @@ class InferenceEngine:
         self.facts = fact_base
         self.rules = rule_base
         self.trace: List[Dict] = []  # Traza de inferencia para credit assignment
+        # Map: derived_literal -> (rule_id, bindings, list_of_antecedent_literals)
+        self.provenance: Dict[Literal, Tuple[str, Dict[str, str], List[Literal]]] = {}
+
     
     def unify(self, literal: Literal, fact_args: Tuple[str, ...]) -> Optional[Dict[str, str]]:
         """Intenta unificar un literal con un hecho. Retorna bindings o None."""
@@ -232,12 +258,22 @@ class InferenceEngine:
                     self.facts.add(head.predicate, head.args)
                 
                 derived.add(head)
+                
+                # Reconstruct antecedents for provenance
+                antecedents = []
+                for lit in self.rules.rules[rule_id].body:
+                    ground_lit = lit.ground(bindings)
+                    antecedents.append(ground_lit)
+
+                self.provenance[head] = (rule_id, bindings, antecedents)
+
                 self.trace.append({
                     "type": "derivation",
                     "rule_id": rule_id,
                     "derived": head,
                     "bindings": bindings
                 })
+
 
             if debug and iteration <= log_first_n_iterations:
                 logger.debug(
@@ -264,3 +300,53 @@ class InferenceEngine:
         result = self.facts.contains(target)
         
         return result, self.trace
+    def get_proof(self, target: Literal) -> Optional[Proof]:
+        """
+        Reconstructs the proof for a target literal using the provenance graph.
+        """
+        if not self.facts.contains(target):
+            return None
+            
+        steps = []
+        visited = set()
+        
+        def backtrack(current_lit: Literal):
+            if current_lit in visited:
+                return
+            visited.add(current_lit)
+            
+            # If it's a base fact (no provenance), it's a leaf
+            if current_lit not in self.provenance:
+                return
+                
+            rule_id, bindings, antecedents = self.provenance[current_lit]
+            
+            # Recursively prove antecedents first
+            for ant in antecedents:
+                backtrack(ant)
+                
+            # Then add this step
+            rule = self.rules.rules.get(rule_id)
+            step = ProofStep(
+                derived_fact=current_lit,
+                rule_id=rule_id,
+                rule_str=str(rule) if rule else "Unknown",
+                bindings=bindings,
+                antecedents=antecedents
+            )
+            steps.append(step)
+
+        backtrack(target)
+        
+        if not steps:
+            # It might be a base fact
+            return Proof(steps=[], confidence=1.0)
+            
+        # Confidence is min of rule confidences in the chain (weakest link)
+        min_conf = 1.0
+        for step in steps:
+            rule = self.rules.rules.get(step.rule_id)
+            if rule:
+                min_conf = min(min_conf, rule.confidence)
+                
+        return Proof(steps=steps, confidence=min_conf)

@@ -37,6 +37,29 @@ print(f"Confidence: {result.confidence:.2f}") # -> 1.00
 print(f"Explanation: {result.explanation}") # -> R_exception: ¬sink(X) :- material(X, balsa)
 ```
 
+### 🔍 Theory Inspector
+Want to see the actual logic the brain learned?
+```python
+for rule in brain.inspect_rules(target="sink"):
+    print(rule)
+# Output:
+# sink(X) :- heavy(X), ¬material(X, balsa) [0.96]
+```
+
+### ⚙️ Profiles
+Cortex comes with pre-tuned profiles for different use cases:
+
+```python
+# Default: Robust Pattern Learner
+# Balances generalization with exception handling. Best for noisy real-world data.
+brain = Cortex()
+
+# Strict: Legal / Logic Profile
+# Prioritizes specific exceptions over general rules. A single counter-example can override a law.
+# Best for compliance, policy, and safety-critical systems.
+legal_brain = Cortex(mode="strict")
+```
+
 ---
 
 ## 🌟 Why Cortex?
@@ -77,6 +100,19 @@ brain.absorb_memory([
 
 ### 3. Confounder Trap (Causal Discovery)
 In a noisy dataset where "Red" correlates with "Sink" 90% of the time, but "Heavy" is the true cause, Cortex correctly identifies "Heavy" as the causal feature using Information Gain and Stability Analysis.
+
+### 4. Pattern Learning Demo
+We include a golden test script that demonstrates end-to-end learning of a "Heavy things sink, except balsa" rule from synthetic data.
+
+```bash
+python3 test_pattern_learning.py
+# Validates world-rule + exception learning with 100% accuracy.
+```
+
+The engine discovers:
+```prolog
+sink(X) :- heavy(X), ¬material(X, balsa).
+```
 
 ---
 

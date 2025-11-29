@@ -85,17 +85,12 @@ def update_theory_kernel(
     # 1. Proyección
     prediction, trace = infer(theory, scene)
 
-    # Si acierta, no hay "gradiente de error": solo consolidamos memoria
-    # Si acierta, no hay "gradiente de error": solo consolidamos memoria
-    if prediction != scene.ground_truth:
-        # Prediction failed -> Punish rules involved in the error
-        punish_rules(theory, trace, scene.target_predicate, scene.ground_truth)
-    else:
-        # Prediction succeeded -> Reward rules involved
-        reward_rules(theory, trace, scene.target_predicate, scene.ground_truth)
-        
-    # CORTEX-OMEGA v1.4: Update Rule Stats (Observation)
-    update_rule_stats(theory, trace, scene.target_predicate, scene.ground_truth)
+    # 2. Refuerzo / Castigo
+    # Actualizar estadísticas de uso y fiabilidad
+    is_correct = (prediction == scene.ground_truth)
+    update_rule_stats(theory, trace, is_correct)
+    
+    # Legacy calls removed (reward_rules, punish_rules) as update_rule_stats handles everything.
         
     new_memory = append_to_memory(memory, scene, config.max_memory)
     
@@ -147,6 +142,7 @@ def update_theory_kernel(
         error_type=error_type,
         patch_generator=config.patch_generator,
         lambda_complexity=config.lambda_complexity,
+        top_k=20,
     )
 
     # 3. Evaluación del baseline (armonía actual)
@@ -220,13 +216,8 @@ def update_theory_kernel(
     # CORTEX-OMEGA: Reinforcement Learning (Update Confidence)
     # We verify the prediction of the BEST theory on the CURRENT scene.
     pred, trace = infer(best_theory, scene)
-    if pred == scene.ground_truth:
-        reward_rules(best_theory, trace, scene.target_predicate, scene.ground_truth)
-    else:
-        punish_rules(best_theory, trace, scene.target_predicate, scene.ground_truth, config=config)
-        
-    # CORTEX-OMEGA v1.4: Update Rule Stats (Observation)
-    update_rule_stats(best_theory, trace, scene.target_predicate, scene.ground_truth)
+    is_correct = (pred == scene.ground_truth)
+    update_rule_stats(best_theory, trace, is_correct)
     
     # 5. Refinement Loop (Fix Regressions on Memory)
     # This is crucial for fixing False Positives introduced by generalization (e.g. Temporal Learning)
@@ -281,7 +272,7 @@ def update_theory_kernel(
     # CORTEX-OMEGA: Garbage Collection (Periodic)
     # For now, run every time (it's cheap).
     threshold = config.plasticity.get("min_conf_to_keep", 0.0) if config.plasticity else 0.0
-    garbage_collect(best_theory, threshold=threshold)
+    garbage_collect(best_theory, threshold=threshold, config=config)
     
     # CORTEX-OMEGA: Self-Reflecting Compiler
     if config.compiler:
@@ -428,15 +419,9 @@ def reward_rules(theory: RuleBase, trace: List[Dict], target_predicate: str, gro
             
             should_reward = False
             
-            # Case 1: GT is Positive. Reward rules deriving Positive Target.
-            if ground_truth:
-                if not is_negated and pred_name == target_predicate:
-                    should_reward = True
-            
-            # Case 2: GT is Negative. Reward rules deriving Negative Target.
-            else:
-                if (is_negated and pred_name == target_predicate) or pred_name == f"NOT_{target_predicate}":
-                    should_reward = True
+            # CORTEX-OMEGA v1.6: Reward ALL rules in the trace if the outcome was correct.
+            # This ensures auxiliary rules (exceptions, concepts) get credit.
+            should_reward = True
             
             if should_reward:
                 if rid in theory.rules and rid not in rewarded:
@@ -453,10 +438,12 @@ def reward_rules(theory: RuleBase, trace: List[Dict], target_predicate: str, gro
                     
                     rewarded.add(rid)
 
-def update_rule_stats(theory: RuleBase, trace: List[Dict], target_predicate: str, ground_truth: bool):
+
+
+def update_rule_stats(theory: RuleBase, trace: List[Dict], is_correct: bool):
     """
     CORTEX-OMEGA v1.4: First-Class Rule Statistics.
-    Updates fires_pos and fires_neg for ALL firing rules, regardless of system prediction.
+    Updates fires_pos, fires_neg, support, failure, and confidence for ALL firing rules.
     """
     updated = set()
     for step in trace:
@@ -464,24 +451,18 @@ def update_rule_stats(theory: RuleBase, trace: List[Dict], target_predicate: str
             rid = step["rule_id"]
             if rid in theory.rules and rid not in updated:
                 rule = theory.rules[rid]
-                derived_lit = step["derived"]
-                pred_name = derived_lit.predicate
-                is_negated = derived_lit.negated
                 
-                # Check consistency with Ground Truth
-                is_consistent = False
-                if ground_truth:
-                    if not is_negated and pred_name == target_predicate:
-                        is_consistent = True
-                else:
-                    if (is_negated and pred_name == target_predicate) or pred_name == f"NOT_{target_predicate}":
-                        is_consistent = True
-                
-                # Update Stats
-                if is_consistent:
+                if is_correct:
                     rule.fires_pos += 1
+                    rule.support_count += 1
                 else:
                     rule.fires_neg += 1
+                    rule.failure_count += 1
+                
+                # Bayesian Update
+                s = rule.support_count
+                f = rule.failure_count
+                rule.confidence = (s + 1.0) / (s + f + 2.0)
                     
                 updated.add(rid)
 
@@ -862,7 +843,7 @@ def append_to_memory(memory: List[Scene], scene: Scene, max_memory: int) -> List
     return new_memory
 
 
-def garbage_collect(theory: RuleBase, threshold: float = 0.0):
+def garbage_collect(theory: RuleBase, threshold: float = 0.0, config: KernelConfig = None):
     """
     CORTEX-OMEGA Pillar 4: Concept Compression.
     Prunes low-utility rules using MDL Scoring.
@@ -871,12 +852,14 @@ def garbage_collect(theory: RuleBase, threshold: float = 0.0):
     # CORTEX-OMEGA v1.4: Use MDL Score
     # Threshold 0.0 means "Does more harm than good" (fires_neg > fires_pos - complexity penalty)
     
+    lambda_val = config.lambda_complexity if config else 0.2
+    
     for rid, rule in list(theory.rules.items()):
         # Give new rules a grace period (support_count < 5)
         if rule.support_count < 5:
             continue
             
-        score = score_mdl(rule)
+        score = score_mdl(rule, lambda_complexity=lambda_val)
         
         # If score is negative, the rule is actively harmful or too complex for its value
         if score < threshold:

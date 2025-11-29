@@ -77,7 +77,7 @@ class DiscriminativeFeatureSelector:
     Selects features that correlate with the target predicate in memory.
     Uses a simplified Information Gain / Correlation metric.
     """
-    def __init__(self, min_score: float = 0.1):
+    def __init__(self, min_score: float = 0.05):
         self.min_score = min_score
 
     def select_features(self, ctx: FailureContext) -> List[str]:
@@ -213,7 +213,7 @@ class DiscriminativeFeatureSelector:
         if selected:
             # Sort by score for debug
             selected.sort(key=lambda p: scores[p], reverse=True)
-            logger.info(f"CORTEX: Feature Selector prioritized {selected[:5]} (Top Score={scores[selected[0]]:.2f}).")
+            logger.debug(f"CORTEX: Feature Selector prioritized {selected[:5]} (Top Score={scores[selected[0]]:.2f}).")
             
         return selected
 
@@ -678,7 +678,7 @@ class HeuristicGenerator:
     # CORTEX-OMEGA v1.3: Causal Priors
     # We prioritize structural/intrinsic properties over transient/extrinsic ones.
     PROPERTY_PRIORITY = {
-        "material": 1.0, # Lowered from 1.2 to allow functional properties to shine
+        "material": 1.5, # Boosted! Material is fundamental.
         "structure": 1.1,
         "density": 1.1,
         "type": 1.1,
@@ -1382,6 +1382,14 @@ class PatchApplier:
             
             # 2. Modificar regla principal para usar el concepto
             new_rule = rule.clone(new_id=f"{rule.id}_v{rule.support_count + 1}")
+            
+            # CORTEX-OMEGA: Reset stats for new hypothesis
+            new_rule.support_count = 0
+            new_rule.failure_count = 0
+            new_rule.fires_pos = 0
+            new_rule.fires_neg = 0
+            new_rule.confidence = 1.0 # Optimistic start
+            
             new_literal = Literal(
                 concept_name, 
                 (details["variable"],), 
@@ -1393,6 +1401,13 @@ class PatchApplier:
         
         # Para otras operaciones, clonar y modificar
         new_rule = rule.clone(new_id=f"{rule.id}_v{rule.support_count + 1}")
+        
+        # CORTEX-OMEGA: Reset stats for new hypothesis
+        new_rule.support_count = 0
+        new_rule.failure_count = 0
+        new_rule.fires_pos = 0
+        new_rule.fires_neg = 0
+        new_rule.confidence = 1.0 # Optimistic start
         
         if patch.operation == PatchOperation.ADD_LITERAL:
             details = patch.details

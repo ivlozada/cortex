@@ -243,12 +243,12 @@ class InferenceEngine:
                             iteration_new_facts.append((head_ground, rule.id, bindings))
                             rule_new_count += 1
                     
-                    # Update usage stats
-                    if rule_new_count > 0:
-                        rule.support_count += 1
-                        s = rule.support_count
-                        f = rule.failure_count
-                        rule.confidence = (s + 1.0) / (s + f + 2.0)
+                    # Update usage stats - REMOVED (Handled in engine.py)
+                    # if rule_new_count > 0:
+                    #     rule.support_count += 1
+                    #     s = rule.support_count
+                    #     f = rule.failure_count
+                    #     rule.confidence = (s + 1.0) / (s + f + 2.0)
 
                 if not iteration_new_facts:
                     if debug:

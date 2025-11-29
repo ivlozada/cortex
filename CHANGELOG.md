@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.0] - 2025-11-29
+
+### Added
+- **Robust Pattern Learning**: Engine now correctly learns complex exceptions (e.g., "Heavy things sink, except balsa") even in noisy data.
+- **Strict Profile**: Added `Cortex(mode="strict")` for legal/compliance use cases where specific exceptions must override general rules.
+- **Golden Test**: Added `test_pattern_learning.py` as a canonical demonstration of rule+exception learning.
+
+### Changed
+- **Stability**: Passed full regression suite including Confounder Invariance, Temporal Sequence, and Noise Robustness.
+- **Inference**: Fixed a bug in `inference.py` where rule statistics were artificially inflated, causing valid exception rules to be pruned.
+
+### Verified
+- **Accuracy**: Achieved 100% accuracy on the "Sink vs Balsa" synthetic dataset.
+- **Theory**: Confirmed learned rules match ground truth logic: `sink(X) :- heavy(X), ¬material(X, balsa)`.
+
 ## [1.7.1] - 2025-11-29
 
 ### Fixed

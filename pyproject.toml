@@ -26,6 +26,10 @@ dependencies = []
 [tool.setuptools_scm]
 write_to = "cortex_omega/_version.py"
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cortex_omega*"]
+
 [project.optional-dependencies]
 dev = [
     "pytest",

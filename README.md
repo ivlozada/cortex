@@ -54,6 +54,29 @@ print(f"Prediction: {result.prediction}") # Output: True
 print(f"Logic Trace: {result.axiom}")      # Output: Rule_Gen_2 (Conf: 1.0)
 ```
 
+```
+
+---
+
+## 🔗 Chain of Logic: The "Glass Box" Proof
+Unlike LLMs that guess based on probability, Cortex chains logical rules to reach a conclusion.
+
+```python
+# 1. Teach the Rules
+brain.add_rule("human(X) :- greek(X)")   # All Greeks are Human
+brain.add_rule("mortal(X) :- human(X)")  # All Humans are Mortal
+
+# 2. Inject Data
+brain.absorb_memory([{"id": "socrates", "is_greek": True}], target_label="greek")
+
+# 3. Query
+result = brain.query(id="socrates", target="mortal")
+
+print(f"Prediction: {result.prediction}")   # -> True
+print(f"Explanation: {result.explanation}") # -> R_Mortal: mortal(X) :- human(X)
+```
+*Cortex proves that Socrates is mortal because he is Greek, therefore Human.*
+
 ---
 
 ## 📉 Evidence: Real-Time Plasticity

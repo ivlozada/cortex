@@ -59,6 +59,18 @@ class Cortex:
         if not self.config.patch_generator:
             self.config.patch_generator = HypothesisGenerator()
             
+    def set_mode(self, mode: str):
+        """
+        Dynamically switches the operating mode.
+        Args:
+            mode (str): "strict" or "robust".
+        """
+        mode = mode.lower()
+        if mode not in ["strict", "robust"]:
+            raise ValueError("Mode must be 'strict' or 'robust'")
+        self.config.mode = mode
+        logger.info(f"🔄 Switched to {mode.upper()} mode.")
+            
     def absorb(self, source: str):
         """
         Ingests raw data from a file, normalizes it, and updates the logic model.
@@ -127,6 +139,15 @@ class Cortex:
             else:
                 ground_truth = item.get("result", False)
                 exclude_keys = {"result"}
+                
+            # Normalize Boolean Strings
+            if isinstance(ground_truth, str):
+                if ground_truth.lower() == "true":
+                    ground_truth = True
+                elif ground_truth.lower() == "false":
+                    ground_truth = False
+            
+            # Build facts
             
             # Build facts
             facts = FactBase()
@@ -321,7 +342,76 @@ class Cortex:
         logger.info(f"🛡️ Exception added: {rule} IF {condition}")
         # TODO: Parse and add to RuleBase/ValueBase
 
+    def inspect_rules(self, target: str = None) -> List[Rule]:
+        """
+        Returns a list of rules, optionally filtered by target predicate.
+        Useful for debugging and analysis.
+        """
+        if target:
+            # Return rules that have 'target' in the head
+            # Note: target might be a predicate name
+            return [r for r in self.theory.rules.values() if r.head.predicate == target]
+        return list(self.theory.rules.values())
 
+    def export_rules(self, format: str = "json") -> str:
+        """
+        Exports learned rules to a standard format.
+        
+        Args:
+            format (str): "json" or "prolog".
+            
+        Returns:
+            str: The exported rules as a string.
+        """
+        import json
+        
+        rules = list(self.theory.rules.values())
+        
+        if format.lower() == "json":
+            export_data = []
+            for r in rules:
+                rule_dict = {
+                    "id": r.id,
+                    "head": str(r.head),
+                    "body": [str(b) for b in r.body],
+                    "confidence": r.confidence,
+                    "stats": {
+                        "support": r.support_count,
+                        "failures": r.failure_count,
+                        "fires_pos": r.fires_pos,
+                        "fires_neg": r.fires_neg,
+                        "reliability": r.reliability
+                    }
+                }
+                export_data.append(rule_dict)
+            return json.dumps(export_data, indent=2)
+            
+        elif format.lower() == "prolog":
+            lines = []
+            for r in rules:
+                # Convert to Prolog syntax: head :- body1, body2.
+                # Note: This is a simplified conversion.
+                head_str = str(r.head).replace("(", "(").replace(")", ")")
+                if r.head.negated:
+                    # Prolog doesn't support negated heads in Horn clauses standardly,
+                    # but we can represent it as 'not_head'.
+                    head_str = "not_" + head_str[1:] # Remove ¬
+                    
+                if not r.body:
+                    lines.append(f"{head_str}.")
+                else:
+                    body_parts = []
+                    for b in r.body:
+                        b_str = str(b)
+                        if b.negated:
+                            b_str = "not(" + b_str[1:] + ")"
+                        body_parts.append(b_str)
+                    body_str = ", ".join(body_parts)
+                    lines.append(f"{head_str} :- {body_str}.")
+            return "\n".join(lines)
+            
+        else:
+            raise ValueError("Format must be 'json' or 'prolog'")
 class InferenceResult:
     def __init__(self, prediction: bool, explanation: str, confidence: float, proof: Optional[Proof] = None):
         self.prediction = prediction

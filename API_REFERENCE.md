@@ -37,6 +37,29 @@ Injects specific memories or rules directly into the engine without reading a fi
     * `result` (*bool*): The ground truth for this observation.
 * **Note:** Use this method to trigger the **Kill Switch** by providing new data that contradicts established axioms.
 
+* **Note:** Use this method to trigger the **Kill Switch** by providing new data that contradicts established axioms.
+
+#### `set_mode(self, mode: str)`
+Dynamically switches the operating mode.
+
+* **Parameters:**
+    * `mode` (*str*): `"strict"` (Zero Tolerance) or `"robust"` (Bayesian).
+* **Returns:** `None`
+
+#### `export_rules(self, format: str = "json") -> str`
+Exports learned rules to a standard format.
+
+* **Parameters:**
+    * `format` (*str*): `"json"` or `"prolog"`.
+* **Returns:** String containing the exported rules.
+
+#### `inspect_rules(self, target: str = None) -> List[Rule]`
+Returns a list of crystallized rules, optionally filtered by a target predicate.
+
+* **Parameters:**
+    * `target` (*str, optional*): The predicate to filter by (e.g., `'fraud'`).
+* **Returns:** List of `Rule` objects with full statistics.
+
 #### `query(self, **kwargs) -> PredictionResult`
 Queries the crystallized logic engine for a prediction based on partial evidence.
 
@@ -58,6 +81,18 @@ The object returned by a query, containing both the inference and the epistemic 
     * `axiom` (*str*): The string representation of the crystallized rule used for deduction.
         * Example: `"fraud(X) :- mass(X, heavy), type(X, guest)"`
 
+### `class cortex_omega.core.rules.Rule`
+Represents a crystallized logical pattern.
+
+* **Attributes:**
+    * `head` (*Literal*): The conclusion of the rule (e.g., `fraud(X)`).
+    * `body` (*List[Literal]*): The conditions (e.g., `[amount(X, heavy), type(X, guest)]`).
+    * `confidence` (*float*): Bayesian belief score (0.0 - 1.0).
+    * `fires_pos` (*int*): Number of times the rule fired correctly (True Positive).
+    * `fires_neg` (*int*): Number of times the rule fired incorrectly (False Positive).
+    * `reliability` (*float*): `fires_pos / (fires_pos + fires_neg)`.
+    * `complexity` (*int*): MDL complexity score (length of body + 1).
+
 ---
 
 ## 3. Configuration
@@ -76,3 +111,15 @@ Advanced configuration for the inner Structural Gradient Descent loop.
 
 * **`EpistemicVoidError`**: Raised when querying a concept the brain has never encountered.
 * **`ConflictWarning`**: Logged when "David vs. Goliath" logic overrides a general rule (standard behavior, not a crash).
+
+---
+
+## 5. Integrations
+
+### `class cortex_omega.api.sklearn.CortexClassifier`
+A Scikit-Learn compatible wrapper for Cortex Omega.
+
+#### `__init__(self, target_label: str, sensitivity: float = 0.1, mode: str = "robust")`
+#### `fit(self, X, y=None)`
+#### `predict(self, X) -> np.ndarray`
+#### `predict_proba(self, X) -> np.ndarray`

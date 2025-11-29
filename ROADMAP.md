@@ -15,16 +15,27 @@ Transform Cortex-Omega from a "Black Box" probabilistic engine into a verifiable
 - **Holographic Conflict Resolution**: "Shadow Rules" for handling exceptions without losing generalization.
 - **Causal Feature Prioritization**: Anti-confounder logic.
 
-## v1.4.0: The "Killer Vertical" (Fraud & Policy)
+## v1.4.0: The "World-Class" Core Upgrade (Released)
 ### Strategy
-Focus on becoming the undisputed best-in-class engine for **Fraud Detection** and **Policy Enforcement**.
+Transform Cortex into a transparent, verifiable engine by exposing internal statistics and enforcing generalization pressure.
 
 ### Features
-- **Domain Helpers**: `cortex_omega.fraud` module with pre-built rules for velocity, geolocation, and risk scoring.
-- **Pandas Integration**: Native `absorb_dataframe(df)` method for high-throughput ingestion.
-- **Rule Export**: Standardized JSON/YAML export for audit compliance.
+- **First-Class Rule Statistics**: `fires_pos`, `fires_neg`, `reliability`, and `coverage` exposed for every rule.
+- **Generalization Pressure (MDL)**: Minimum Description Length scoring to prune redundant rules and favor simplicity.
+- **Transparent Auditing**: `inspect_rules` API for deep introspection.
 
-## v1.5.0: The "Neuro-Symbolic Bridge" (LLM Integration)
+## v1.5.0: The "Killer Vertical" (Released)
+### Strategy
+Focus on becoming the undisputed best-in-class engine for **Fraud Detection** and **Policy Enforcement** by adding temporal, relational, and strict logic capabilities.
+
+### Features
+- **Temporal Sequence Learning**: Learns time-ordered patterns (`A then B`).
+- **Relational Logic**: Learns multi-entity relationships (`grandparent(X, Y)`).
+- **Strict Mode**: "Zero Tolerance" option for logical purity.
+- **Scikit-Learn Wrapper**: `CortexClassifier` for ML pipeline integration.
+- **Rule Export**: JSON/Prolog export for audit compliance.
+
+## v1.6.0: The "Neuro-Symbolic Bridge" (LLM Integration)
 ### Strategy
 Position Cortex as the "Logical Guardrail" for LLMs. "No prompts. No hallucinations. Just logic."
 

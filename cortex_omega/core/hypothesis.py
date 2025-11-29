@@ -145,6 +145,47 @@ class DiscriminativeFeatureSelector:
             # Final Score
             score = impact * support
             
+            # CORTEX-OMEGA v1.4: Confounder Invariance (Stability Check)
+            # Split memory into Early/Late to detect drift.
+            # If feature correlation flips or drops, it's likely a confounder.
+            if len(relevant_scenes) >= 10:
+                mid = len(relevant_scenes) // 2
+                early_scenes = relevant_scenes[:mid]
+                late_scenes = relevant_scenes[mid:]
+                
+                def get_local_impact(scenes):
+                    l_pos = 0
+                    l_feat_pos = 0
+                    l_feat_total = 0
+                    for s in scenes:
+                        if s.ground_truth: l_pos += 1
+                        ent = s.target_entity
+                        has_feat = False
+                        for p, args_set in s.facts.facts.items():
+                            if p == pred:
+                                for args in args_set:
+                                    if len(args) == 2 and args[0] == ent and args[1] == val:
+                                        has_feat = True
+                                    elif len(args) == 1 and args[0] == ent and val == "true":
+                                        has_feat = True
+                        if has_feat:
+                            l_feat_total += 1
+                            if s.ground_truth: l_feat_pos += 1
+                    
+                    if l_feat_total == 0: return 0.0
+                    l_base = l_pos / len(scenes) if scenes else 0.5
+                    l_prob = l_feat_pos / l_feat_total
+                    return abs(l_prob - l_base)
+
+                impact_early = get_local_impact(early_scenes)
+                impact_late = get_local_impact(late_scenes)
+                
+                # Stability: 1.0 if identical, 0.0 if max divergence
+                # We penalize variance.
+                stability = 1.0 - abs(impact_early - impact_late)
+                score *= stability
+                # print(f"DEBUG: Feature {pred}={val} Stability={stability:.2f} (Early={impact_early:.2f}, Late={impact_late:.2f})")
+            
             if pred not in scores:
                 scores[pred] = 0.0
             scores[pred] = max(scores[pred], score)
@@ -161,6 +202,102 @@ class DiscriminativeFeatureSelector:
             print(f"CORTEX: Feature Selector prioritized {selected[:5]} (Top Score={scores[selected[0]]:.2f}).")
             
         return selected
+
+    def select_numeric_splits(self, ctx: FailureContext) -> List[Tuple[str, str, float, float]]:
+        """
+        CORTEX-OMEGA v1.4: Numeric Threshold Learning.
+        Scans memory for numeric features and finds best splits.
+        Returns list of (predicate, operator, threshold, score).
+        """
+        if not ctx.memory:
+            return []
+            
+        splits = []
+        
+        # 1. Collect numeric values and labels
+        # predicate -> list of (value, is_positive)
+        numeric_data = {}
+        
+        relevant_scenes = [s for s in ctx.memory if s.target_predicate == ctx.target_predicate]
+        if not relevant_scenes:
+            return []
+            
+        total_pos = sum(1 for s in relevant_scenes if s.ground_truth)
+        total_neg = len(relevant_scenes) - total_pos
+        p_pos_base = total_pos / len(relevant_scenes) if len(relevant_scenes) > 0 else 0.5
+        
+        for scene in relevant_scenes:
+            is_positive = scene.ground_truth
+            ent = scene.target_entity
+            
+            for pred, args_set in scene.facts.facts.items():
+                for args in args_set:
+                    if len(args) == 2 and args[0] == ent:
+                        val_str = args[1]
+                        try:
+                            val = float(val_str)
+                            if pred not in numeric_data:
+                                numeric_data[pred] = []
+                            numeric_data[pred].append((val, is_positive))
+                        except ValueError:
+                            continue # Not numeric
+                            
+        # 2. Find best split for each predicate
+        for pred, data in numeric_data.items():
+            if len(data) < 5: continue # Need enough data
+            
+            data.sort(key=lambda x: x[0])
+            
+            best_score = 0.0
+            best_split = None
+            
+            # Try all midpoints
+            for i in range(len(data) - 1):
+                if data[i][0] == data[i+1][0]: continue # Skip duplicate values
+                
+                threshold = (data[i][0] + data[i+1][0]) / 2.0
+                
+                # Calculate stats for > Threshold
+                # (We can optimize this, but O(N^2) is fine for small memory)
+                greater_pos = 0
+                greater_total = 0
+                
+                for val, is_pos in data:
+                    if val > threshold:
+                        greater_total += 1
+                        if is_pos:
+                            greater_pos += 1
+                            
+                if greater_total == 0 or greater_total == len(data): continue
+                
+                p_pos_gt = greater_pos / greater_total
+                impact_gt = abs(p_pos_gt - p_pos_base)
+                support_gt = greater_total / len(data)
+                score_gt = impact_gt * support_gt
+                
+                # Calculate stats for <= Threshold (Complement)
+                less_pos = total_pos - greater_pos
+                less_total = len(data) - greater_total
+                p_pos_le = less_pos / less_total
+                impact_le = abs(p_pos_le - p_pos_base)
+                support_le = less_total / len(data)
+                score_le = impact_le * support_le
+                
+                # Pick the direction that has higher impact
+                if score_gt > best_score and score_gt > self.min_score:
+                    best_score = score_gt
+                    best_split = (pred, ">", threshold, score_gt)
+                
+                if score_le > best_score and score_le > self.min_score:
+                    best_score = score_le
+                    best_split = (pred, "<=", threshold, score_le)
+            
+            if best_split:
+                splits.append(best_split)
+                
+        # Sort by score
+        splits.sort(key=lambda x: x[3], reverse=True)
+        return splits
 class FeatureExtractor:
     """
     Extrae features estructurales del contexto de fallo.
@@ -256,6 +393,7 @@ class HeuristicGenerator:
     def __init__(self, embedding_model=None):
         self.embedding_model = embedding_model
         self.strategies = [
+            self._strategy_add_temporal_constraint, # CORTEX-OMEGA v1.4: Highest Priority (Temporal Logic)
             self._strategy_add_property_filter,
             self._strategy_add_negation,
             self._strategy_add_relational_constraint,
@@ -266,7 +404,153 @@ class HeuristicGenerator:
             self._strategy_relational_anti_unification,
             self._strategy_contrastive_refinement, # NUEVO: Refinamiento contrastivo
             self._strategy_create_negative_rule,   # NUEVO: Explicit Negation
+            self._strategy_add_numeric_threshold,  # CORTEX-OMEGA v1.4: Numeric Thresholds
         ]
+        
+        # CORTEX-OMEGA: Meta-Cognition
+        self.success_history = {} # strategy_name -> success_count
+
+    def _strategy_add_numeric_threshold(self, ctx: FailureContext, features: Dict) -> List[Patch]:
+        """
+        Estrategia: Añadir umbral numérico.
+        Para FALSE_NEGATIVE: añadir condición V > T o V <= T.
+        """
+        patches = []
+        if ctx.error_type != "FALSE_NEGATIVE":
+            return []
+            
+        # Use selector to find splits
+        selector = DiscriminativeFeatureSelector(min_score=0.1)
+        splits = selector.select_numeric_splits(ctx)
+        
+        for pred, op, threshold, score in splits[:3]: # Top 3 splits
+            # Construct patch
+            # We need to bind the variable first: pred(X, V)
+            # Then add constraint: V op Threshold
+            
+            # Check if pred(X, V) is already in body?
+            # If not, add it.
+            
+            # For now, assume we add both: pred(X, V), V > T
+            # But if pred(X, V) is already there, we just add V > T?
+            # That requires matching variables.
+            
+            # Simplified approach: Add "pred(X, V), V > T"
+            # Engine handles variable reuse if names match?
+            # No, we need to ensure V is unique or reused correctly.
+            
+            # Let's use a unique variable name based on predicate
+            var_name = f"V_{pred}"
+            
+            patch = Patch(
+                operation=PatchOperation.ADD_LITERAL,
+                target_rule_id=ctx.rule.id,
+                details={
+                    "add_body": [
+                        f"{pred}(X, {var_name})",
+                        f"{op}({var_name}, {threshold})"
+                    ]
+                },
+                confidence=score * 0.8, # Slightly lower confidence than pure structural
+                explanation=f"Requiere {pred} {op} {threshold:.2f}"
+            )
+            patches.append(patch)
+            
+        return patches
+
+    def _strategy_add_temporal_constraint(self, ctx: FailureContext, features: Dict) -> List[Patch]:
+        """
+        CORTEX-OMEGA v1.4: Temporal Sequence Learning.
+        If a rule fires on a negative example (False Positive), try to add a temporal constraint
+        (T2 > T1) that holds for positives but fails for this negative.
+        """
+        patches = []
+        if ctx.error_type != "FALSE_POSITIVE":
+            return []
+            
+        # 1. Find all variables in the rule body
+        variables = set()
+        for lit in ctx.rule.body:
+            for arg in lit.args:
+                if isinstance(arg, str) and arg and arg[0].isupper():
+                    variables.add(arg)
+                    
+        if len(variables) < 2:
+            return []
+            
+        # 2. Get bindings for the current negative firing
+        from .engine import InferenceEngine
+        matcher = InferenceEngine(ctx.scene_facts, None)
+        bindings_list = matcher.evaluate_body(ctx.rule.body)
+        
+        if not bindings_list:
+            return []
+            
+        # Check each grounding (usually just one for specific counter-example)
+        for bindings in bindings_list:
+            # Identify numeric values (timestamps)
+            numeric_vars = []
+            for var, val in bindings.items():
+                try:
+                    float(val)
+                    numeric_vars.append((var, float(val)))
+                except ValueError:
+                    continue
+            
+            if len(numeric_vars) < 2:
+                continue
+                
+            # Try all pairs
+            for v1, val1 in numeric_vars:
+                for v2, val2 in numeric_vars:
+                    if v1 == v2: continue
+                    
+                    # We want a constraint that FAILS here (to kill the FP).
+                    # So if we propose v1 > v2, it must be that val1 <= val2 currently.
+                    if val1 <= val2:
+                        # Potential constraint: v1 > v2
+                        # Check if this holds for POSITIVES in memory.
+                        
+                        consistent_with_positives = True
+                        if ctx.memory:
+                            for s in ctx.memory:
+                                if not s.ground_truth: continue
+                                if s.target_predicate != ctx.target_predicate: continue
+                                
+                                # Find bindings for s
+                                matcher_pos = InferenceEngine(s.facts, None)
+                                pos_bindings_list = matcher_pos.evaluate_body(ctx.rule.body)
+                                if not pos_bindings_list: continue 
+                                
+                                # Check if v1 > v2 holds for at least one grounding in this positive
+                                satisfied_in_s = False
+                                for pb in pos_bindings_list:
+                                    try:
+                                        pval1 = float(pb.get(v1, "0"))
+                                        pval2 = float(pb.get(v2, "0"))
+                                        if pval1 > pval2:
+                                            satisfied_in_s = True
+                                            break
+                                    except:
+                                        pass
+                                
+                                if not satisfied_in_s:
+                                    consistent_with_positives = False
+                                    break
+                        
+                        if consistent_with_positives:
+                            # Found a valid temporal constraint!
+                            patch = Patch(
+                                operation=PatchOperation.ADD_LITERAL,
+                                target_rule_id=ctx.rule.id,
+                                details={
+                                    "add_body": [f">({v1}, {v2})"]
+                                },
+                                confidence=0.9
+                            )
+                            patches.append(patch)
+                            
+        return patches
 
     def _strategy_contrastive_refinement(self, ctx: FailureContext, features: Dict) -> List[Patch]:
         """
@@ -715,6 +999,7 @@ class HeuristicGenerator:
             # Buscar predicados que sean verdaderos para AMBOS targets
             common_predicates = []
             aux_rules_collected = [] # Reset for each scene
+            variable_values = {} # var_name -> {"current": val, "past": val}
             
             # 1. Propiedades involving target
             for pred, args_set in current_facts.facts.items():
@@ -738,9 +1023,48 @@ class HeuristicGenerator:
                         
                         if past_facts.contains(Literal(pred, tuple(past_args_check))):
                             common_predicates.append(gen_lit)
+                        else:
+                            # CORTEX-OMEGA v1.4: Value Generalization
+                            # If exact match fails, check if we can generalize a constant to a variable.
+                            # Look for pred(past_target, V_past) in past_facts
+                            # where structure matches but value differs.
+                            
+                            # Iterate over past facts to find structural match
+                            for past_args in past_facts.facts.get(pred, []):
+                                if len(past_args) != len(args): continue
+                                
+                                # Check if target position matches
+                                match_structure = True
+                                diff_indices = []
+                                
+                                for k, arg_k in enumerate(args):
+                                    if arg_k == current_target:
+                                        if past_args[k] != past_target:
+                                            match_structure = False
+                                            break
+                                    else:
+                                        if past_args[k] != arg_k:
+                                            diff_indices.append(k)
+                                            
+                                if match_structure and len(diff_indices) == 1:
+                                    # Found a match with exactly one difference (the value)
+                                    # Generalize to variable
+                                    gen_args_var = list(gen_args)
+                                    idx = diff_indices[0]
+                                    var_name = f"V_{pred}_{idx}" # Unique variable name
+                                    gen_args_var[idx] = var_name
+                                    
+                                    # Store values for temporal analysis
+                                    current_val = args[idx]
+                                    past_val = past_args[idx]
+                                    variable_values[var_name] = {"current": current_val, "past": past_val}
+                                    
+                                    new_lit = Literal(pred, tuple(gen_args_var))
+                                    if new_lit not in common_predicates:
+                                        common_predicates.append(new_lit)
                         
                         # Semantic match check (simplified for now, focusing on structure)
-                        elif self.embedding_model:
+                        if self.embedding_model:
                              # ... (Semantic logic would go here, but let's stick to structural for Newton)
                              pass
             
@@ -756,6 +1080,31 @@ class HeuristicGenerator:
                         common_predicates.append(Literal(pred, args))
 
             if common_predicates:
+                # CORTEX-OMEGA v1.4: Infer Temporal Constraints
+                # Check ordering between numeric variables
+                numeric_vars = []
+                for var, vals in variable_values.items():
+                    try:
+                        c_val = float(vals["current"])
+                        p_val = float(vals["past"])
+                        numeric_vars.append((var, c_val, p_val))
+                    except ValueError:
+                        pass
+                
+                if len(numeric_vars) >= 2:
+                    for i in range(len(numeric_vars)):
+                        for j in range(len(numeric_vars)):
+                            if i == j: continue
+                            v1, c1, p1 = numeric_vars[i]
+                            v2, c2, p2 = numeric_vars[j]
+                            
+                            # Check >
+                            if c1 > c2 and p1 > p2:
+                                common_predicates.append(Literal(">", (v1, v2)))
+                            # Check < (redundant if we check > both ways, but explicit is fine)
+                            # elif c1 < c2 and p1 < p2:
+                            #     common_predicates.append(Literal("<", (v1, v2)))
+
                 # Crear regla generalizada
                 # R_gen: target(X) :- common_predicates(X)
                 
@@ -771,7 +1120,7 @@ class HeuristicGenerator:
                         "aux_rules": aux_rules_collected,
                         "source_scene": past_scene.id
                     },
-                    confidence=0.8
+                    confidence=0.85 # Boost confidence for generalized rules
                 )
                 patches.append(patch)
         

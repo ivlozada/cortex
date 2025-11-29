@@ -31,6 +31,11 @@ To avoid local maxima (the "Greedy Trap"), Cortex utilizes a Simulated Annealing
 ### 2.3. The "Kill Switch" Mechanism (Non-Monotonic Logic)
 A critical requirement for autonomous agents is the ability to handle **Context Drift**. Cortex implements a dynamic confidence score. When a high-confidence axiom is contradicted by new ground truth, the system triggers a **Usage Reset**, degrading the specific rule's confidence to $\approx 0.01$ without affecting orthogonal rules.
 
+### 2.4. Generalization Pressure (Minimum Description Length)
+To prevent overfitting, Cortex employs an MDL-based scoring function that penalizes rule complexity.
+$$ Score(R) = (Fires_{pos} - Fires_{neg}) - \lambda \cdot Complexity(R) $$
+This ensures that the system prefers simple, general rules (Occam's Razor) over complex, specific ones, unless the specific rule provides significant additional explanatory power.
+
 ## 3. Performance & Validation
 
 ### 3.1. The "Dirty Data" Challenge

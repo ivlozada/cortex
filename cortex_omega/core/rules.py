@@ -49,9 +49,29 @@ class Rule:
     confidence: float = 1.0
     support_count: int = 0
     failure_count: int = 0
+    # CORTEX-OMEGA v1.4: First-Class Rule Statistics
+    fires_pos: int = 0
+    fires_neg: int = 0
+    
     # CORTEX-OMEGA Pillar 4: Concept Compression
     usage_count: int = 0
     last_used: float = field(default_factory=lambda: 0.0)
+    
+    @property
+    def coverage(self) -> int:
+        return self.fires_pos + self.fires_neg
+        
+    @property
+    def reliability(self) -> float:
+        return self.fires_pos / (self.coverage + 1e-6)
+        
+    @property
+    def complexity(self) -> int:
+        """
+        CORTEX-OMEGA v1.4: MDL Complexity.
+        Length of the rule (body + head).
+        """
+        return len(self.body) + 1
     
     def __repr__(self):
         body_str = ", ".join(str(b) for b in self.body)
@@ -67,9 +87,34 @@ class Rule:
             confidence=self.confidence,
             support_count=self.support_count,
             failure_count=self.failure_count,
+            fires_pos=self.fires_pos,
+            fires_neg=self.fires_neg,
             usage_count=self.usage_count,
             last_used=self.last_used
         )
+
+    def is_subsumed_by(self, other: 'Rule') -> bool:
+        """
+        Returns True if 'self' is more specific than (or equal to) 'other'.
+        (i.e., 'other' is more general).
+        
+        Logic:
+        1. Heads must match (predicate and args).
+        2. 'other' body must be a subset of 'self' body.
+        """
+        if self.head.predicate != other.head.predicate:
+            return False
+        # Args matching is tricky with variables, but for now assume exact match or normalized vars
+        # If we assume canonical variable naming (X, Y, Z...), exact match works.
+        if self.head.args != other.head.args:
+            return False
+            
+        # Check if other.body is subset of self.body
+        # (Every literal in other.body must be in self.body)
+        other_lits = set(other.body)
+        self_lits = set(self.body)
+        
+        return other_lits.issubset(self_lits)
 
 
 class FactBase:

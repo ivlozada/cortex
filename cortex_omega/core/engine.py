@@ -29,7 +29,33 @@ class KernelConfig:
     patch_generator: Optional[HypothesisGenerator] = None
     # CORTEX-OMEGA: Compiler
     compiler: Optional['KnowledgeCompiler'] = None
+    # Refinement Loop
+    max_refinement_steps: int = 3
 
+
+
+def find_worst_error(theory: RuleBase, memory: List[Scene], axioms: ValueBase) -> Optional[Scene]:
+    """
+    Encuentra la escena en memoria con el error más grave bajo la teoría actual.
+    Prioriza False Positives (regresiones) sobre False Negatives.
+    """
+    first_fp = None
+    first_fn = None
+    
+    for s in memory:
+        pred, _ = infer(theory, s)
+        if pred and not s.ground_truth:
+            # False Positive
+            first_fp = s
+            break # Stop at first FP (critical regression)
+        elif not pred and s.ground_truth:
+            # False Negative
+            if not first_fn:
+                first_fn = s
+                
+    if first_fp:
+        return first_fp
+    return first_fn
 
 # =========================
 # 1. Operador de actualización
@@ -59,7 +85,10 @@ def update_theory_kernel(
         punish_rules(theory, trace, scene.target_predicate, scene.ground_truth)
     else:
         # Prediction succeeded -> Reward rules involved
-        reward_rules(theory, trace)
+        reward_rules(theory, trace, scene.target_predicate, scene.ground_truth)
+        
+    # CORTEX-OMEGA v1.4: Update Rule Stats (Observation)
+    update_rule_stats(theory, trace, scene.target_predicate, scene.ground_truth)
         
     new_memory = append_to_memory(memory, scene, config.max_memory)
     
@@ -91,45 +120,18 @@ def update_theory_kernel(
     # Tipo de error (equivalente al "signo" del gradiente)
     if prediction and not scene.ground_truth:
         error_type = "FALSE_POSITIVE"
-        # CORTEX-OMEGA: Kill Switch / Dogmatism Fix
-        # CORTEX-OMEGA: Kill Switch / Dogmatism Fix
-        # punish_rules(theory, trace, penalty=0.8) # Redundant, already called above
     elif not prediction and scene.ground_truth:
         error_type = "FALSE_NEGATIVE"
     elif not prediction and not scene.ground_truth:
         # TRUE NEGATIVE (Correctly predicted False)
-        # But do we have an EXPLANATION? (Explicit Negative Rule)
-        # Check if NOT_target is in facts (derived by forward_chain)
-        # Note: 'scene.facts' is input, we need the derived facts from 'infer'.
-        # 'infer' returns prediction, trace. It doesn't return the full derived facts.
-        # But we can check the trace for a negative derivation?
-        # Or we can assume that if we are here, we might want to reinforce negative rules.
-        
-        # Let's check if we have a negative explanation.
-        # We need to peek into the inference engine state or re-run query for NOT_target.
-        # For efficiency, let's just assume we want to learn explicit negations if we don't have them.
-        # But how do we know if we have them?
-        
-        # Hack: Re-check if NOT_target is derivable
-        neg_target = Literal(scene.target_predicate, (scene.target_entity,), negated=True)
-        # We can't easily check 'derived' from 'infer' because it's not returned.
-        # Let's modify 'infer' to return derived facts? No, too invasive.
-        
-        # Let's assume we always want to try to learn a negative rule if we are in a True Negative state
-        # AND we are in a "learning phase" (which we always are).
-        # But we don't want to spam negative rules for everything.
-        # Only if we suspect we are missing an explanation.
-        
-        # Let's trigger "NEGATIVE_GAP" which the hypothesis generator can choose to ignore if it finds a negative rule already?
-        # Or better: The hypothesis generator will propose a negative rule. 
-        # If a similar negative rule already exists and covers it, the harmony score won't improve much (redundancy).
-        
+        # Check for NEGATIVE_GAP
         error_type = "NEGATIVE_GAP"
     else:
         # True Positive
         return theory, new_memory
-
+        
     # 2. Generación de teorías candidatas (parches estructurales)
+
     candidate_theories, ctx = generate_structural_candidates(
         theory=theory,
         scene=scene,
@@ -150,6 +152,7 @@ def update_theory_kernel(
     best_harmony = score_harmony(theory, eval_scenes, config.lambda_complexity, entropy_map)
     
     best_harmony = score_harmony(theory, eval_scenes, config.lambda_complexity, entropy_map)
+    print(f"DEBUG: Initial Harmony: {best_harmony:.4f}")
     
     logger.debug(f"DEBUG: Initial Harmony: {best_harmony:.4f}")
     logger.debug(f"DEBUG: Candidates generated: {len(candidate_theories)}")
@@ -165,7 +168,9 @@ def update_theory_kernel(
 
         # 4b. Recalcular armonía global
         h_new = score_harmony(T_candidate, eval_scenes, config.lambda_complexity, entropy_map)
-        logger.debug(f"DEBUG: Candidate {i} Harmony: {h_new:.4f}")
+        print(f"DEBUG: Candidate {i} Harmony: {h_new:.4f} (Rules={len(T_candidate.rules)})")
+        for r in T_candidate.rules.values():
+            print(f"  - {r}")
 
         accepted = False
         if h_new > best_harmony:
@@ -183,14 +188,17 @@ def update_theory_kernel(
             
             
             if random.random() < prob:
-                logger.debug(f"DEBUG: Accepted worse candidate (Prob={prob:.4f}, T={temp:.4f}) to escape local max.")
-                accepted = True
+                # CORTEX-OMEGA: Safety check - Don't accept total failure
+                if h_new < 0.01 and best_harmony > 0.01:
+                    pass
+                else:
+                    print(f"DEBUG: Accepted worse candidate (Prob={prob:.4f}, T={temp:.4f}) to escape local max.")
+                    accepted = True
         
         if accepted:
             best_harmony = h_new
             best_theory = T_candidate
             best_patch = patch
-            logger.debug(f"DEBUG: New Best Theory Found!")
 
     # Cool down (once per update cycle)
     config.temperature *= config.cooling_rate
@@ -206,10 +214,62 @@ def update_theory_kernel(
     # We verify the prediction of the BEST theory on the CURRENT scene.
     pred, trace = infer(best_theory, scene)
     if pred == scene.ground_truth:
-        reward_rules(best_theory, trace)
+        reward_rules(best_theory, trace, scene.target_predicate, scene.ground_truth)
     else:
         punish_rules(best_theory, trace, scene.target_predicate, scene.ground_truth, mode=config.mode)
+        
+    # CORTEX-OMEGA v1.4: Update Rule Stats (Observation)
+    update_rule_stats(best_theory, trace, scene.target_predicate, scene.ground_truth)
     
+    # 5. Refinement Loop (Fix Regressions on Memory)
+    # This is crucial for fixing False Positives introduced by generalization (e.g. Temporal Learning)
+    # 5. Refinement Loop (Fix Regressions on Memory)
+    # This is crucial for fixing False Positives introduced by generalization (e.g. Temporal Learning)
+    MAX_REFINEMENT_STEPS = 3
+    for i in range(MAX_REFINEMENT_STEPS):
+        worst_scene = find_worst_error(best_theory, memory, axioms)
+        if not worst_scene:
+            break
+            
+        # Determine error type and trace
+        pred_r, trace_r = infer(best_theory, worst_scene)
+        err_type = "FALSE_POSITIVE" if pred_r and not worst_scene.ground_truth else "FALSE_NEGATIVE"
+        
+        # Generate candidates
+        refinement_candidates, _ = generate_structural_candidates(
+            theory=best_theory,
+            scene=worst_scene,
+            memory=memory,
+            trace=trace_r,
+            error_type=err_type,
+            patch_generator=config.patch_generator,
+            lambda_complexity=config.lambda_complexity
+        )
+        
+        if not refinement_candidates:
+            break
+            
+        # Evaluate candidates
+        best_refinement_harmony = score_harmony(best_theory, eval_scenes, config.lambda_complexity, entropy_map)
+        best_refinement_theory = best_theory
+        improved = False
+        
+        for j, (T_cand, patch) in enumerate(refinement_candidates):
+            if violates_axioms(T_cand, axioms, eval_scenes):
+                continue
+                
+            h_cand = score_harmony(T_cand, eval_scenes, config.lambda_complexity, entropy_map)
+            
+            if h_cand > best_refinement_harmony:
+                best_refinement_harmony = h_cand
+                best_refinement_theory = T_cand
+                improved = True
+        
+        if improved:
+            best_theory = best_refinement_theory
+        else:
+            break
+
     # CORTEX-OMEGA: Garbage Collection (Periodic)
     # For now, run every time (it's cheap).
     garbage_collect(best_theory)
@@ -235,7 +295,10 @@ def infer(theory: RuleBase, scene: Scene):
     engine = InferenceEngine(facts_copy, theory)
     engine.forward_chain(debug=True)
     
-    target = Literal(scene.target_predicate, (scene.target_entity,))
+    if scene.target_args:
+        target = Literal(scene.target_predicate, scene.target_args)
+    else:
+        target = Literal(scene.target_predicate, (scene.target_entity,))
     
     # CORTEX-OMEGA v1.3: Conflict Resolution (Holographic Logic)
     # Check for both Positive and Negative derivations
@@ -264,6 +327,9 @@ def infer(theory: RuleBase, scene: Scene):
             
     # CORTEX-OMEGA: Usage Tracking
     if trace:
+        print(f"DEBUG: Inference Trace for {scene.target_entity}:")
+        for step in trace:
+            print(f"  - {step}")
         import time
         for step in trace:
             if step["type"] == "derivation":
@@ -324,11 +390,15 @@ def punish_rules(theory: RuleBase, trace: List[Dict], target_predicate: str, gro
                     
                     # CORTEX-OMEGA v1.3: Mode-based Punishment
                     if mode == "strict":
-                        increment = 5 # Harsh penalty
+                        # Strict Mode: Zero Tolerance.
+                        # Set failure count to a massive number to force confidence -> 0.0
+                        rule.failure_count = 1_000_000
+                        logger.info(f"💀 STRICT MODE: Rule {rid} killed due to counter-example.")
                     else:
                         increment = 1 # Standard Bayesian update
-                        
-                    rule.failure_count += increment
+                        rule.failure_count += increment
+                    
+                    # rule.fires_neg is now handled in update_rule_stats
                     
                     # Bayesian Update: Mean of Beta(s+1, f+1)
                     s = rule.support_count
@@ -339,27 +409,79 @@ def punish_rules(theory: RuleBase, trace: List[Dict], target_predicate: str, gro
                     
                     punished.add(rid)
 
-def reward_rules(theory: RuleBase, trace: List[Dict], reward: float = 0.1):
+def reward_rules(theory: RuleBase, trace: List[Dict], target_predicate: str, ground_truth: bool, reward: float = 0.1):
     """
     CORTEX-OMEGA v1.3: Bayesian Reward.
     Updates support counts and recalculates confidence.
+    Only rewards rules that derived facts consistent with the final outcome.
     """
     rewarded = set()
+    
     for step in trace:
         if step["type"] == "derivation":
             rid = step["rule_id"]
-            if rid in theory.rules and rid not in rewarded:
+            derived_lit = step["derived"]
+            pred_name = derived_lit.predicate
+            is_negated = derived_lit.negated
+            
+            should_reward = False
+            
+            # Case 1: GT is Positive. Reward rules deriving Positive Target.
+            if ground_truth:
+                if not is_negated and pred_name == target_predicate:
+                    should_reward = True
+            
+            # Case 2: GT is Negative. Reward rules deriving Negative Target.
+            else:
+                if (is_negated and pred_name == target_predicate) or pred_name == f"NOT_{target_predicate}":
+                    should_reward = True
+            
+            if should_reward:
+                if rid in theory.rules and rid not in rewarded:
+                    rule = theory.rules[rid]
+                    rule.support_count += 1
+                    # rule.fires_pos is now handled in update_rule_stats
+                    
+                    # Bayesian Update
+                    s = rule.support_count
+                    f = rule.failure_count
+                    
+                    # New Confidence
+                    rule.confidence = (s + 1.0) / (s + f + 2.0)
+                    
+                    rewarded.add(rid)
+
+def update_rule_stats(theory: RuleBase, trace: List[Dict], target_predicate: str, ground_truth: bool):
+    """
+    CORTEX-OMEGA v1.4: First-Class Rule Statistics.
+    Updates fires_pos and fires_neg for ALL firing rules, regardless of system prediction.
+    """
+    updated = set()
+    for step in trace:
+        if step["type"] == "derivation":
+            rid = step["rule_id"]
+            if rid in theory.rules and rid not in updated:
                 rule = theory.rules[rid]
-                rule.support_count += 1
+                derived_lit = step["derived"]
+                pred_name = derived_lit.predicate
+                is_negated = derived_lit.negated
                 
-                # Bayesian Update
-                s = rule.support_count
-                f = rule.failure_count
+                # Check consistency with Ground Truth
+                is_consistent = False
+                if ground_truth:
+                    if not is_negated and pred_name == target_predicate:
+                        is_consistent = True
+                else:
+                    if (is_negated and pred_name == target_predicate) or pred_name == f"NOT_{target_predicate}":
+                        is_consistent = True
                 
-                # New Confidence
-                rule.confidence = (s + 1.0) / (s + f + 2.0)
-                
-                rewarded.add(rid)
+                # Update Stats
+                if is_consistent:
+                    rule.fires_pos += 1
+                else:
+                    rule.fires_neg += 1
+                    
+                updated.add(rid)
 
 def calculate_attribute_entropy(memory: List[Scene]) -> Dict[str, float]:
     """
@@ -533,8 +655,13 @@ def identify_culprit_rule(
 
     elif error_type == "FALSE_NEGATIVE":
         rules = theory.get_rules_for_predicate(target_predicate)
-        if rules:
-            return rules[0]
+        # CORTEX-OMEGA: Only consider POSITIVE rules for False Negatives.
+        # If we pick a negative rule, we'll just branch it into another negative rule,
+        # which doesn't solve the missing positive coverage.
+        positive_rules = [r for r in rules if not r.head.negated]
+        
+        if positive_rules:
+            return positive_rules[0]
         # Fallback for Cold Start: If no rules exist, we can't identify a culprit.
         # But we still need to generate a candidate.
         # We return None here, but generate_structural_candidates needs to handle it.
@@ -674,6 +801,41 @@ def compute_complexity(theory: RuleBase, entropy_map: Dict[str, float] = None) -
     return 1.0 * num_rules + literal_cost + 0.8 * num_concepts
 
 
+def score_mdl(rule: Rule, lambda_complexity: float = 0.2) -> float:
+    """
+    CORTEX-OMEGA v1.4: MDL Score for a single rule.
+    Score = Coverage * (1 - ErrorRate) - Lambda * Complexity
+    
+    Higher is better.
+    """
+    if rule.coverage == 0:
+        return 0.0
+        
+    error_rate = 1.0 - rule.reliability
+    # We want to maximize Coverage * Reliability, penalized by Complexity.
+    
+    # Adjusted Formula:
+    # Score = (FiresPos - FiresNeg) - Lambda * Complexity
+    # This is equivalent to Coverage * (Rel - (1-Rel)) - Lambda * Complexity
+    # = Coverage * (2*Rel - 1) - Lambda * Complexity
+    
+    # Let's stick to the plan:
+    # score(R) = coverage * (1 - error_rate) - lambda * complexity
+    # coverage * reliability - lambda * complexity
+    # fires_pos - lambda * complexity
+    
+    # Wait, if fires_pos is high, we like it.
+    # If complexity is high, we dislike it.
+    # But we also want to penalize fires_neg explicitly?
+    # fires_pos accounts for reliability implicitly (it's the numerator).
+    # But fires_neg doesn't hurt fires_pos directly.
+    
+    # Better Formula:
+    # Score = fires_pos - fires_neg - lambda * complexity
+    
+    return (rule.fires_pos - rule.fires_neg) - (lambda_complexity * rule.complexity)
+
+
 def clone_factbase(fb: FactBase) -> FactBase:
     """
     Copia profunda de un FactBase, reutilizando tu representación interna.
@@ -696,14 +858,70 @@ def append_to_memory(memory: List[Scene], scene: Scene, max_memory: int) -> List
     return new_memory
 
 
-def garbage_collect(theory: RuleBase, threshold: float = 0.1):
+def garbage_collect(theory: RuleBase, threshold: float = 0.0):
     """
     CORTEX-OMEGA Pillar 4: Concept Compression.
-    Prunes low-utility rules.
+    Prunes low-utility rules using MDL Scoring.
     """
-    removed = theory.prune(threshold)
-    if removed:
-        logger.info(f"CORTEX: Garbage Collector pruned {len(removed)} rules: {removed}")
+    to_remove = []
+    # CORTEX-OMEGA v1.4: Use MDL Score
+    # Threshold 0.0 means "Does more harm than good" (fires_neg > fires_pos - complexity penalty)
+    
+    for rid, rule in list(theory.rules.items()):
+        # Give new rules a grace period (support_count < 5)
+        if rule.support_count < 5:
+            continue
+            
+        score = score_mdl(rule)
+        
+        # If score is negative, the rule is actively harmful or too complex for its value
+        if score < threshold:
+            to_remove.append(rid)
+    
+    for rid in to_remove:
+        theory.remove(rid)
+
+    if to_remove:
+        logger.info(f"CORTEX: Garbage Collector pruned {len(to_remove)} rules (MDL < {threshold}): {to_remove}")
+
+    # CORTEX-OMEGA v1.4: Redundancy Pruning (Compression)
+    prune_redundant_rules(theory)
+
+
+def prune_redundant_rules(theory: RuleBase):
+    """
+    Removes rules that are subsumed by more general rules with equal or better reliability.
+    """
+    to_remove = set()
+    rules = list(theory.rules.values())
+    
+    for i in range(len(rules)):
+        for j in range(len(rules)):
+            if i == j: continue
+            
+            r_gen = rules[i]
+            r_spec = rules[j]
+            
+            if r_spec.id in to_remove: continue
+            if r_gen.id in to_remove: continue
+            
+            # Check if r_gen subsumes r_spec
+            if r_spec.is_subsumed_by(r_gen):
+                # r_gen is more general (or equal)
+                
+                # Check reliability
+                # If general rule is reliable enough, we don't need the specific one
+                if r_gen.reliability >= r_spec.reliability:
+                    to_remove.add(r_spec.id)
+                elif r_gen.reliability > 0.9:
+                    # Even if specific is 1.0 and general is 0.95, general is preferred
+                    to_remove.add(r_spec.id)
+                    
+    for rid in to_remove:
+        theory.remove(rid)
+        
+    if to_remove:
+        logger.info(f"CORTEX: Compressed {len(to_remove)} redundant rules: {to_remove}")
 
 
 class KnowledgeCompiler:

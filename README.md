@@ -22,6 +22,11 @@ If you retrain a Neural Network to learn a new regulation, it often silently for
 
 * **Hierarchical Logic:** Prioritizes specific exceptions over general rules ("David vs. Goliath" protocol).
 * **Holographic Logic (v1.3):** Uses Bayesian scoring and shadow rules to handle noise and confounders without losing generalization.
+* **First-Class Rule Statistics (v1.4):** Exposes `fires_pos`, `fires_neg`, `reliability`, and `coverage` for every rule, enabling transparent auditing.
+* **Generalization Pressure (v1.4):** Uses MDL (Minimum Description Length) scoring to prune redundant rules and favor simpler explanations.
+* **Temporal & Relational Learning (v1.5):** Learns sequences (`A then B`) and relational patterns (`grandparent(X, Y)`).
+* **Strict Mode (v1.5):** Optional "Zero Tolerance" mode where a single counter-example kills a rule instantly.
+* **Scikit-Learn Integration (v1.5):** Drop-in `CortexClassifier` for seamless ML pipeline integration.
 
 ### 🏗 Architecture
 
@@ -100,6 +105,31 @@ print(f"Prediction: {result.prediction}")   # -> True
 print(f"Explanation: {result.explanation}") # -> R_Mortal: mortal(X) :- human(X)
 ```
 *Cortex proves that Socrates is mortal because he is Greek, therefore Human.*
+
+---
+
+## 🔍 Transparent Auditing (v1.4)
+
+Trust is built on verification. Cortex exposes the raw statistics of every rule it learns.
+
+```python
+# Inspect all rules related to 'fraud'
+rules = brain.inspect_rules(target="fraud")
+
+for rule in rules:
+    print(f"Rule: {rule}")
+    print(f"  Stats: Pos={rule.fires_pos}, Neg={rule.fires_neg}")
+    print(f"  Reliability: {rule.reliability:.2f}")
+    print(f"  MDL Complexity: {rule.complexity}")
+```
+
+**Output:**
+```text
+Rule: fraud(X) :- amount(X, heavy), type(X, guest) [0.99]
+  Stats: Pos=142, Neg=1
+  Reliability: 0.99
+  MDL Complexity: 3
+```
 
 ---
 
@@ -216,6 +246,36 @@ Result:
 * New heavy Balsa → **does not sink**
 
 No manual if/else, no hand-written exceptions — just data and contrastive learning.
+
+---
+
+---
+
+## 🤖 Scikit-Learn Integration (v1.5)
+
+Cortex now plays nicely with the Python ML ecosystem.
+
+```python
+from cortex_omega.api.sklearn import CortexClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import accuracy_score
+
+# 1. Create the Classifier
+clf = CortexClassifier(target_label="fraud", mode="robust")
+
+# 2. Fit (Just like sklearn)
+X_train = [{"amount": "high", "type": "guest"}, ...]
+y_train = [True, ...]
+clf.fit(X_train, y_train)
+
+# 3. Predict
+preds = clf.predict(X_test)
+print(f"Accuracy: {accuracy_score(y_test, preds)}")
+
+# 4. Inspect Logic
+for rule in clf.brain.inspect_rules():
+    print(rule)
+```
 
 ---
 

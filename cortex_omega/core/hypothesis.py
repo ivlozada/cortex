@@ -409,6 +409,15 @@ class HeuristicGenerator:
             for pred, value in features["target_properties"].items():
                 if pred not in [lit.predicate for lit in ctx.rule.body]:
                     # Quizás la regla necesita esta condición
+                    
+                    # CORTEX-OMEGA: Prioritize structural properties over transient ones
+                    priority = self.PROPERTY_PRIORITY.get(pred, 10)
+                    base_conf = 0.4
+                    if priority <= 3: # material, size, shape
+                        base_conf += 0.2
+                    elif priority >= 4: # color, etc
+                        base_conf -= 0.1
+                        
                     patch = Patch(
                         operation=PatchOperation.ADD_LITERAL,
                         target_rule_id=ctx.rule.id,
@@ -416,7 +425,7 @@ class HeuristicGenerator:
                             "predicate": pred,
                             "args": ("X", value)
                         },
-                        confidence=0.4,
+                        confidence=base_conf,
                         explanation=f"Considerar {pred}={value} como condición"
                     )
                     patches.append(patch)

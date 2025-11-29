@@ -214,7 +214,7 @@ class Cortex:
             # Find explanation
             trace = engine.trace
             for step in reversed(trace):
-                if step["type"] == "derivation" and step["derived"].predicate == target_pred:
+                if step["type"] == "derivation" and step["derived"] == target_lit:
                     rule_id = step["rule_id"]
                     rule = self.theory.rules.get(rule_id)
                     if rule:

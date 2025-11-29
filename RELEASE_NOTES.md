@@ -1,4 +1,21 @@
-# Release Notes: Cortex-Omega v1.2.1
+# Release Notes
+
+## v1.2.2: The "David & Goliath" Patch (2025-11-28)
+**Robustness & Stability Update**
+
+This release focuses on critical bug fixes and engine robustness, specifically addressing conflict resolution and noise tolerance.
+
+### 🐛 Bug Fixes
+- **Conflict Resolution**: Fixed a critical issue where boolean values (`True`/`False`) were misinterpreted as variables, preventing specific exceptions from overriding general rules (The "David vs. Goliath" bug).
+- **Noise Robustness**: Improved `HypothesisGenerator` to prioritize structural properties (shape, material) over transient ones (color), preventing overfitting to noise.
+- **Explanation Logic**: Fixed a bug where explanations could incorrectly cite negative rules for positive predictions.
+
+### 🛠 Engineering
+- **Test Suite**: Added comprehensive tests for robustness (`test_robustness.py`), logic (`test_logic.py`), and serialization (`test_serialization.py`).
+- **Exceptions**: Introduced a unified exception hierarchy in `cortex_omega.core.errors`.
+
+---
+: Cortex-Omega v1.2.1
 
 ## The "Clean Launch" Patch
 

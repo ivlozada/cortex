@@ -4,7 +4,6 @@
 ### The Epistemic Inference Engine for Python.
 *No prompts. No hallucinations. Just logic.*
 
-[![PyPI version](https://badge.fury.io/py/cortex.svg)](https://badge.fury.io/py/cortex)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---

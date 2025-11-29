@@ -1,5 +1,17 @@
 # Release Notes
 
+## v1.2.6: The "Documentation" Patch (2025-11-28)
+**Documentation Update**
+
+This release updates the documentation to include a detailed "David vs. Goliath" example, showcasing Cortex-Omega's ability to handle logical conflicts and exceptions via contrastive refinement.
+
+### 📚 Documentation
+- **README**: Added detailed "David vs. Goliath" example with code and output.
+- **Examples**: Added `examples/09_advanced_conflict_resolution.py` (Level 2 conflict resolution).
+
+---
+
+
 ## v1.2.5: The "Stability" Patch (2025-11-28)
 **Bug Fix Update**
 

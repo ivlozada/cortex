@@ -140,20 +140,81 @@ For engineers considering adoption, here are the rough performance characteristi
 
 ## 📚 Advanced Usage
 
-### The "David vs. Goliath" Protocol
-Cortex naturally handles logic conflicts where a specific exception contradicts a general rule.
+### Example 07 – David vs. Goliath (Conflict Resolution)
+
+Cortex-Ω doesn’t just memorize labels. It learns **general rules** and then refines them when it sees **exceptions**.
+
+In this toy world:
+
+- General rule: **heavy things sink** (iron, lead, stone)
+- Exception: **balsa wood is heavy but does *not* sink**
+
+We teach Cortex both, and then ask:
+
+- “What happens to a new heavy Iron object?”
+- “What happens to a new heavy Balsa object?”
 
 ```python
-# General Rule: Heavy objects sink (Confidence 1.0)
-brain.absorb_memory(heavy_objects_data, target="sink")
+from cortex_omega import Cortex
 
-# Exception: Balsa wood is heavy but floats
-brain.absorb_memory(balsa_wood_data, target="float")
+brain = Cortex()
 
-# Query
-print(brain.query(material="iron"))  # -> Sinks (General)
-print(brain.query(material="balsa")) # -> Floats (Specific Exception)
+# 1) General pattern: heavy things sink
+data_sink = [
+    {"id": "iron_ball",  "material": "iron",   "is_heavy": True,  "is_sink": True},
+    {"id": "lead_block", "material": "lead",   "is_heavy": True,  "is_sink": True},
+    {"id": "stone",      "material": "stone",  "is_heavy": True,  "is_sink": True},
+    {"id": "ping_pong",  "material": "plastic","is_heavy": False, "is_sink": False},
+]
+brain.absorb_memory(data_sink, target_label="sink")
+
+# 2) Exception: balsa is heavy but does NOT sink
+data_exception = [
+    {"id": "balsa_block", "material": "balsa", "is_heavy": True, "is_sink": False},
+]
+brain.absorb_memory(data_exception, target_label="sink")
+
+def show_case(label, result, expected):
+    print(f"\n[{label}]")
+    print(f"Prediction:  {result.prediction} (should be {expected})")
+    print(f"Confidence:  {result.confidence:.2f}")
+    print(f"Explanation: {result.explanation}")
+    if result.proof is not None:
+        print(f"Proof:       {result.proof}")
+    else:
+        print("Proof:       (no supporting rule; defaulted to negative)")
+
+iron  = brain.query(material="iron",  is_heavy=True, target="sink")
+balsa = brain.query(material="balsa", is_heavy=True, target="sink")
+
+show_case("IRON – heavy iron", iron,  expected=True)
+show_case("BALSA – heavy balsa", balsa, expected=False)
 ```
+
+Typical output:
+
+```text
+[IRON – heavy iron]
+Prediction:  True (should be True)
+Confidence:  0.14
+Explanation: R_branch_is_heavy_v3: sink(X) :- is_heavy(X, true), material(X, iron) [0.14]
+Proof:       sink(query_entity)
+
+[BALSA – heavy balsa]
+Prediction:  False (should be False)
+Confidence:  0.00
+Explanation: No rule fired.
+Proof:       (no supporting rule; defaulted to negative)
+```
+
+Cortex first learns a **general rule** (“heavy things sink”), then the balsa example triggers a **contrastive refinement**: the naïve rule is restricted, and a more specific branch emerges (“heavy AND iron ⇒ sink”).
+
+Result:
+
+* New heavy Iron → **sinks**
+* New heavy Balsa → **does not sink**
+
+No manual if/else, no hand-written exceptions — just data and contrastive learning.
 
 ---
 

@@ -5,17 +5,19 @@ High-level interface for the Cortex Neuro-Symbolic Engine.
 Provides the "5-Line Experience".
 """
 
+import logging
+import pickle
 from typing import List, Dict, Optional, Any, Union
 from ..core.engine import update_theory_kernel, KernelConfig, infer
 from ..core.rules import RuleBase, FactBase, Literal, Rule
 from ..core.values import ValueBase, Axiom
+from ..io.ingestor import SmartIngestor
 from ..core.hypothesis import HypothesisGenerator
 from ..core.inference import Proof
-from ..core.errors import DataFormatError, RuleParseError, CortexError
+from ..core.errors import DataFormatError, RuleParseError, CortexError, EpistemicVoidError # Added EpistemicVoidError
 
-from ..io.ingestor import SmartIngestor
 import time
-import logging
+import json # Added for export_rules
 
 # Configure default logging to WARNING to keep the launch clean
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -210,7 +212,7 @@ class Cortex:
         Queries the engine with a set of observations.
         Example: brain.query(mass="heavy", type="guest", target="fraud")
         """
-        # print("DEBUG: ENTERING QUERY")
+        # logger.debug("ENTERING QUERY")
         
         # 1. Construct a temporary scene from kwargs
         from ..core.rules import Scene, FactBase
@@ -246,7 +248,7 @@ class Cortex:
             ground_truth=False # Dummy
         )
         
-        print(f"DEBUG: Query Facts: {facts.facts}")
+        logger.debug(f"Query Facts: {facts.facts}")
         
         # 2. Run inference using the Kernel's infer function (which has Conflict Resolution)
         from ..core.engine import infer
@@ -372,63 +374,71 @@ class Cortex:
 
     def export_rules(self, format: str = "json") -> str:
         """
-        Exports learned rules to a standard format.
+        Exports the learned rules to a standard format.
         
         Args:
             format (str): "json" or "prolog".
             
         Returns:
-            str: The exported rules as a string.
+            str: The exported rules.
         """
-        import json
-        
         rules = list(self.theory.rules.values())
         
         if format.lower() == "json":
-            export_data = []
-            for r in rules:
-                rule_dict = {
-                    "id": r.id,
-                    "head": str(r.head),
-                    "body": [str(b) for b in r.body],
-                    "confidence": r.confidence,
-                    "stats": {
-                        "support": r.support_count,
-                        "failures": r.failure_count,
-                        "fires_pos": r.fires_pos,
-                        "fires_neg": r.fires_neg,
-                        "reliability": r.reliability
-                    }
-                }
-                export_data.append(rule_dict)
+            export_data = [r.to_dict() for r in rules]
             return json.dumps(export_data, indent=2)
             
         elif format.lower() == "prolog":
             lines = []
             for r in rules:
                 # Convert to Prolog syntax: head :- body1, body2.
-                # Note: This is a simplified conversion.
                 head_str = str(r.head).replace("(", "(").replace(")", ")")
                 if r.head.negated:
-                    # Prolog doesn't support negated heads in Horn clauses standardly,
-                    # but we can represent it as 'not_head'.
                     head_str = "not_" + head_str[1:] # Remove ¬
-                    
-                if not r.body:
-                    lines.append(f"{head_str}.")
-                else:
-                    body_parts = []
-                    for b in r.body:
-                        b_str = str(b)
-                        if b.negated:
-                            b_str = "not(" + b_str[1:] + ")"
-                        body_parts.append(b_str)
-                    body_str = ", ".join(body_parts)
+                
+                body_parts = []
+                for b in r.body:
+                    b_str = str(b)
+                    if b.negated:
+                        b_str = "not_" + b_str[1:]
+                    body_parts.append(b_str)
+                
+                body_str = ", ".join(body_parts)
+                if body_str:
                     lines.append(f"{head_str} :- {body_str}.")
+                else:
+                    lines.append(f"{head_str}.")
+                    
             return "\n".join(lines)
-            
         else:
-            raise ValueError("Format must be 'json' or 'prolog'")
+            raise ValueError(f"Unknown format: {format}")
+
+    def save_brain(self, file_path: str):
+        """
+        Saves the entire brain state to a file.
+        
+        Args:
+            file_path (str): Path to the output file.
+        """
+        with open(file_path, 'wb') as f:
+            pickle.dump(self, f)
+        logger.info(f"Brain saved to {file_path}")
+
+    @staticmethod
+    def load_brain(file_path: str) -> 'Cortex':
+        """
+        Loads a brain state from a file.
+        
+        Args:
+            file_path (str): Path to the input file.
+            
+        Returns:
+            Cortex: The loaded brain instance.
+        """
+        with open(file_path, 'rb') as f:
+            brain = pickle.load(f)
+        logger.info(f"Brain loaded from {file_path}")
+        return brain
 class InferenceResult:
     def __init__(self, prediction: bool, explanation: str, confidence: float, proof: Optional[Proof] = None):
         self.prediction = prediction

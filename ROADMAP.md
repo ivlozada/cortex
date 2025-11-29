@@ -35,7 +35,17 @@ Focus on becoming the undisputed best-in-class engine for **Fraud Detection** an
 - **Scikit-Learn Wrapper**: `CortexClassifier` for ML pipeline integration.
 - **Rule Export**: JSON/Prolog export for audit compliance.
 
-## v1.6.0: The "Neuro-Symbolic Bridge" (LLM Integration)
+## v1.6.0: Stability & Usability Polish (Released)
+### Strategy
+Ensure the engine is production-ready with robust logging, serialization, and verified stability.
+
+### Features
+- **Brain Serialization**: `save_brain` / `load_brain` for persistent state.
+- **Clean Logging**: Replaced stdout spam with structured `logging`.
+- **Stress-Tested**: Verified against noise, confounders, and multi-exception scenarios.
+- **World-Class Docs**: Comprehensive README and API reference.
+
+## v1.7.0: The "Neuro-Symbolic Bridge" (LLM Integration)
 ### Strategy
 Position Cortex as the "Logical Guardrail" for LLMs. "No prompts. No hallucinations. Just logic."
 

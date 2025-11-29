@@ -159,7 +159,7 @@ def update_theory_kernel(
     best_harmony = score_harmony(theory, eval_scenes, config.lambda_complexity, entropy_map)
     
     best_harmony = score_harmony(theory, eval_scenes, config.lambda_complexity, entropy_map)
-    print(f"DEBUG: Initial Harmony: {best_harmony:.4f}")
+    logger.debug(f"Initial Harmony: {best_harmony:.4f}")
     
     logger.debug(f"DEBUG: Initial Harmony: {best_harmony:.4f}")
     logger.debug(f"DEBUG: Candidates generated: {len(candidate_theories)}")
@@ -175,9 +175,9 @@ def update_theory_kernel(
 
         # 4b. Recalcular armonía global
         h_new = score_harmony(T_candidate, eval_scenes, config.lambda_complexity, entropy_map)
-        print(f"DEBUG: Candidate {i} Harmony: {h_new:.4f} (Rules={len(T_candidate.rules)})")
+        logger.debug(f"Candidate {i} Harmony: {h_new:.4f} (Rules={len(T_candidate.rules)})")
         for r in T_candidate.rules.values():
-            print(f"  - {r}")
+            logger.debug(f"  - {r}")
 
         accepted = False
         if h_new > best_harmony:
@@ -199,7 +199,7 @@ def update_theory_kernel(
                 if h_new < 0.01 and best_harmony > 0.01:
                     pass
                 else:
-                    print(f"DEBUG: Accepted worse candidate (Prob={prob:.4f}, T={temp:.4f}) to escape local max.")
+                    logger.debug(f"Accepted worse candidate (Prob={prob:.4f}, T={temp:.4f}) to escape local max.")
                     accepted = True
         
         if accepted:
@@ -336,9 +336,9 @@ def infer(theory: RuleBase, scene: Scene):
             
     # CORTEX-OMEGA: Usage Tracking
     if trace:
-        print(f"DEBUG: Inference Trace for {scene.target_entity}:")
+        logger.debug(f"Inference Trace for {scene.target_entity}:")
         for step in trace:
-            print(f"  - {step}")
+            logger.debug(f"  - {step}")
         import time
         for step in trace:
             if step["type"] == "derivation":
@@ -534,7 +534,7 @@ def calculate_attribute_entropy(memory: List[Scene]) -> Dict[str, float]:
             entropy -= p * math.log2(p)
             
         entropy_map[pred] = entropy
-        # print(f"DEBUG: Entropy({pred}) = {entropy:.2f}")
+        # logger.debug(f"Entropy({pred}) = {entropy:.2f}")
         
     return entropy_map
 
@@ -743,8 +743,8 @@ def evaluate_f1(theory: RuleBase, scenes: List[Scene]) -> float:
         pos_proof = engine.get_proof(target_lit)
         neg_proof = engine.get_proof(neg_target_lit)
         
-        # print(f"DEBUG: Pos Proof for {target_lit}: {pos_proof}")
-        # print(f"DEBUG: Neg Proof for {neg_target_lit}: {neg_proof}")
+        # logger.debug(f"Pos Proof for {target_lit}: {pos_proof}")
+        # logger.debug(f"Neg Proof for {neg_target_lit}: {neg_proof}")
 
         prediction = False
         explanation = "No rule fired."

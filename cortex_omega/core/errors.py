@@ -23,3 +23,7 @@ class InferenceTimeoutError(CortexError):
 class ConfigurationError(CortexError):
     """Raised when the kernel configuration is invalid."""
     pass
+
+class EpistemicVoidError(CortexError):
+    """Raised when the engine has absolutely no knowledge to answer a query."""
+    pass

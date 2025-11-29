@@ -13,12 +13,19 @@ Para la PoC v0.2, usamos heurísticas informadas + búsqueda acotada.
 El componente neural se añade en v0.3.
 """
 
+import logging
+import math
+import random
+from collections import defaultdict
+
 from dataclasses import dataclass, field
 from typing import Dict, List, Set, Tuple, Optional, Any
 from .rules import FactBase, RuleBase, Rule, Literal, parse_literal
 from .inference import InferenceEngine
 from enum import Enum
 import copy
+
+logger = logging.getLogger(__name__)
 
 
 class PatchOperation(Enum):
@@ -191,7 +198,7 @@ class DiscriminativeFeatureSelector:
                 # We penalize variance.
                 stability = 1.0 - abs(impact_early - impact_late)
                 score *= stability
-                # print(f"DEBUG: Feature {pred}={val} Stability={stability:.2f} (Early={impact_early:.2f}, Late={impact_late:.2f})")
+                # logger.debug(f"Feature {pred}={val} Stability={stability:.2f} (Early={impact_early:.2f}, Late={impact_late:.2f})")
             
             if pred not in scores:
                 scores[pred] = 0.0
@@ -206,7 +213,7 @@ class DiscriminativeFeatureSelector:
         if selected:
             # Sort by score for debug
             selected.sort(key=lambda p: scores[p], reverse=True)
-            print(f"CORTEX: Feature Selector prioritized {selected[:5]} (Top Score={scores[selected[0]]:.2f}).")
+            logger.info(f"CORTEX: Feature Selector prioritized {selected[:5]} (Top Score={scores[selected[0]]:.2f}).")
             
         return selected
 
@@ -693,7 +700,7 @@ class HeuristicGenerator:
         
         if ctx.error_type == "FALSE_POSITIVE":
             # El target NO debería cumplir. Buscar propiedades que lo distinguen.
-            # print(f"DEBUG: Checking target properties: {features['target_properties']}")
+            # logger.debug(f"Checking target properties: {features['target_properties']}")
             for pred, value in features["target_properties"].items():
                 # Si la propiedad es booleana "true", el literal es pred(X).
                 # Si es valorada, es pred(X, val).
@@ -1510,7 +1517,7 @@ class PatternCrystallizer:
             
         self.patterns[ctx_hash][strategy_name] += 1
         self.context_stats[ctx_hash] += 1
-        print(f"CORTEX: Crystallized pattern! Context[{ctx_hash[:20]}...] -> {strategy_name} (+1)")
+        logger.info(f"CORTEX: Crystallized pattern! Context[{ctx_hash[:20]}...] -> {strategy_name} (+1)")
 
     def get_priorities(self, features: Dict[str, Any]) -> List[str]:
         """Returns strategies sorted by historical success rate."""
@@ -1537,7 +1544,7 @@ class AnalogicalMemory:
         """Stores a successful repair case."""
         # Store a deep copy to avoid mutation issues
         self.memory.append((copy.deepcopy(features), copy.deepcopy(patch)))
-        print(f"CORTEX: Stored analogical case. Total memory: {len(self.memory)}")
+        logger.info(f"CORTEX: Stored analogical case. Total memory: {len(self.memory)}")
 
     def retrieve(self, current_features: Dict[str, Any], threshold: float = 0.7) -> List[Patch]:
         """
@@ -1550,7 +1557,7 @@ class AnalogicalMemory:
             similarity = self._compute_similarity(current_features, past_features)
             
             if similarity >= threshold:
-                print(f"CORTEX: Found analogy! Similarity: {similarity:.2f}")
+                logger.info(f"CORTEX: Found analogy! Similarity: {similarity:.2f}")
                 # Adapt the patch to the current context
                 adapted_patch = self._adapt_patch(past_patch, past_features, current_features)
                 if adapted_patch:
@@ -1708,7 +1715,7 @@ class HypothesisGenerator:
             from .motif_library import MotifLibrary
             self.motif_library = MotifLibrary()
         except ImportError:
-            print("WARNING: motif_library not found. Disabling motifs.")
+            logger.warning("motif_library not found. Disabling motifs.")
             self.motif_library = None
             disable_motifs = True
             
@@ -1783,12 +1790,12 @@ class HypothesisGenerator:
             priorities = self.crystallizer.get_priorities(features)
             if priorities:
                 features['cortex_priorities'] = priorities
-                print(f"CORTEX: Applying crystallized wisdom. Prioritizing: {priorities}")
+                logger.info(f"CORTEX: Applying crystallized wisdom. Prioritizing: {priorities}")
                 
             # CORTEX-OMEGA: Analogical Retrieval
             analogical_candidates = self.analogical_memory.retrieve(features)
             if analogical_candidates:
-                print(f"CORTEX: Retrieved {len(analogical_candidates)} analogical candidates.")
+                logger.info(f"CORTEX: Retrieved {len(analogical_candidates)} analogical candidates.")
                 
             raw_candidates = self.heuristic_generator.generate_candidates(ctx, features)
             
@@ -1874,7 +1881,7 @@ class HypothesisGenerator:
         if hasattr(winning_patch, 'source_strategy'):
              self.crystallizer.record_success(features, winning_patch.source_strategy)
         else:
-             print("WARNING: Winning patch has no source_strategy. Cannot crystallize.")
+             logger.warning("Winning patch has no source_strategy. Cannot crystallize.")
              
         # CORTEX-OMEGA: Store in Analogical Memory
         self.analogical_memory.add(features, winning_patch)

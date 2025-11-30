@@ -743,8 +743,8 @@ class HeuristicGenerator:
             # p(start, Y)
             first_hops = []
             for pred, args_set in facts.facts.items():
-                # Sort for determinism
-                for args in sorted(list(args_set)):
+                # Sort for determinism (safe against mixed types)
+                for args in sorted(list(args_set), key=str):
                     if len(args) == 2 and args[0] == start:
                         first_hops.append((pred, args[1])) # (p, Y)
             
@@ -778,7 +778,7 @@ class HeuristicGenerator:
             logger.debug(f"DEBUG: Common paths with {s.id}: {common}")
             
             # Sort for determinism
-            for p, q in sorted(list(common)):
+            for p, q in sorted(list(common), key=str):
                 # Create rule: target(X, Z) :- p(X, Y), q(Y, Z)
                 rule_id = f"R_rel_{p}_{q}"
                 head = Literal(ctx.target_predicate, ("X", "Z"))

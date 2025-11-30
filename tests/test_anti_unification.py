@@ -40,7 +40,12 @@ class TestAntiUnification(unittest.TestCase):
         # 3. Run Strategy
         config = KernelConfig()
         gen = HeuristicGenerator(config)
-        patches = gen._strategy_relational_anti_unification(ctx, features={})
+        try:
+            patches = gen._strategy_relational_anti_unification(ctx, features={})
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            raise
         
         # 4. Verify
         self.assertTrue(len(patches) > 0, "Should generate at least one patch")

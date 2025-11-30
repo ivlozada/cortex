@@ -5,8 +5,7 @@ from cortex_omega.core.hypothesis import HypothesisGenerator, FailureContext
 from cortex_omega.core.engine import infer
 from cortex_omega.core.config import KernelConfig
 
-import logging
-logging.basicConfig(level=logging.DEBUG)
+
 
 class TestNumericThresholds(unittest.TestCase):
     def test_numeric_split_discovery(self):

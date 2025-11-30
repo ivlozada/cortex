@@ -5,7 +5,7 @@ import logging
 from cortex_omega.api.client import Cortex
 
 # Configure logging to capture output for verification if needed
-logging.basicConfig(level=logging.DEBUG)
+
 
 class TestStability(unittest.TestCase):
     def test_save_load_brain(self):

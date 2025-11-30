@@ -1,9 +1,15 @@
 import unittest
+import random
 from cortex_omega.core.rules import Rule, Literal, FactBase, Scene, RuleID
 from cortex_omega.core.hypothesis import HeuristicGenerator, FailureContext, PatchOperation
 from cortex_omega.core.config import KernelConfig
 
 class TestAntiUnification(unittest.TestCase):
+    def setUp(self):
+        # FIX: Fijar semilla para determinismo en CI
+        random.seed(42)
+        self.config = KernelConfig(random_seed=42)
+
     def test_relational_anti_unification(self):
         # 1. Setup Scenes
         # Scene 1: A -> B -> C (Current Failure)

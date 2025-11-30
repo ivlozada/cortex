@@ -1,0 +1,48 @@
+[
+  {
+    "id": "scene_abc",
+    "facts": {
+      "parent": [["a", "b"], ["b", "c"]]
+    },
+    "target_predicate": "grandparent",
+    "target_args": ["a", "c"],
+    "ground_truth": true
+  },
+  {
+    "id": "scene_def",
+    "facts": {
+      "parent": [["d", "e"], ["e", "f"]]
+    },
+    "target_predicate": "grandparent",
+    "target_args": ["d", "f"],
+    "ground_truth": true
+  },
+  {
+    "id": "scene_gh",
+    "facts": {
+      "parent": [["g", "h"]]
+    },
+    "target_predicate": "grandparent",
+    "target_args": ["g", "h"],
+    "ground_truth": false
+  },
+  {
+    "id": "scene_ij",
+    "facts": {
+      "friend": [["i", "j"]]
+    },
+    "target_predicate": "grandparent",
+    "target_args": ["i", "j"],
+    "ground_truth": false
+  },
+  {
+    "id": "scene_test_xyz",
+    "facts": {
+      "parent": [["x", "y"], ["y", "z"]]
+    },
+    "target_predicate": "grandparent",
+    "target_args": ["x", "z"],
+    "ground_truth": true,
+    "split": "test"
+  }
+]

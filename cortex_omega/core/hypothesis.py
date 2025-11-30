@@ -20,7 +20,7 @@ from collections import defaultdict
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Set, Tuple, Optional, Any, TYPE_CHECKING
-from .rules import FactBase, RuleBase, Rule, Literal, parse_literal, Scene
+from .rules import Rule, Literal, FactBase, Scene, RuleBase, RuleID, Rule, Literal, parse_literal, Scene
 from .inference import InferenceEngine
 from enum import Enum
 import copy
@@ -402,12 +402,19 @@ class HeuristicGenerator:
     Implementa patrones conocidos de reparación lógica.
     """
     
-    # Prioridad de propiedades para excepciones (menor = más relevante)
+    # Prioridad de propiedades para excepciones (mayor = más relevante)
+    # CORTEX-OMEGA: Standardized to Higher Value = Higher Priority
     PROPERTY_PRIORITY = {
-        "material": 1,  # Propiedades físicas primero
-        "size": 2,
-        "shape": 3,
-        "color": 4,     # Color es menos relevante para excepciones físicas
+        "material": 10.0,
+        "is_heavy": 10.0,
+        "heavy": 10.0,
+        "structure": 8.0,
+        "density": 8.0,
+        "type": 8.0,
+        "shape": 7.0,     # Shape is robust (High Priority)
+        "size": 6.0,
+        "color": 2.0,     # Color is often noise (Low Priority)
+        "location": 1.0,  # Location is often noise (Lowest Priority)
     }
     
     def __init__(self, embedding_model=None):
@@ -464,7 +471,7 @@ class HeuristicGenerator:
             
             patch = Patch(
                 operation=PatchOperation.ADD_LITERAL,
-                target_rule_id=ctx.rule.id,
+                target_rule_id=str(ctx.rule.id),
                 details={
                     "add_body": [
                         f"{pred}(X, {var_name})",
@@ -474,8 +481,6 @@ class HeuristicGenerator:
                 confidence=score * 1.2, # Boost confidence to prioritize numeric splits over generic variables
                 explanation=f"Requiere {pred} {op} {threshold:.2f}"
             )
-            patches.append(patch)
-            
             patches.append(patch)
             
         return patches
@@ -502,8 +507,9 @@ class HeuristicGenerator:
             
         # 2. Get bindings for the current negative firing
         from .engine import InferenceEngine
-        matcher = InferenceEngine(ctx.scene_facts, None)
-        bindings_list = matcher.evaluate_body(ctx.rule.body)
+        from .rules import RuleBase
+        engine = InferenceEngine(ctx.scene_facts, RuleBase())
+        bindings_list = engine.evaluate_body(ctx.rule.body)
         
         if not bindings_list:
             return []
@@ -565,7 +571,7 @@ class HeuristicGenerator:
                             # Found a valid temporal constraint!
                             patch = Patch(
                                 operation=PatchOperation.ADD_LITERAL,
-                                target_rule_id=ctx.rule.id,
+                                target_rule_id=str(ctx.rule.id),
                                 details={
                                     "add_body": [f">({v1}, {v2})"]
                                 },
@@ -634,7 +640,7 @@ class HeuristicGenerator:
                 
             patch = Patch(
                 operation=PatchOperation.ADD_LITERAL,
-                target_rule_id=ctx.rule.id,
+                target_rule_id=str(ctx.rule.id),
                 details={
                     "predicate": pred,
                     "args": args
@@ -684,20 +690,7 @@ class HeuristicGenerator:
         
         return candidates
     
-    # CORTEX-OMEGA v1.3: Causal Priors
-    # We prioritize structural/intrinsic properties over transient/extrinsic ones.
-    PROPERTY_PRIORITY = {
-        "material": 1.5, # Boosted! Material is fundamental.
-        "structure": 1.1,
-        "density": 1.1,
-        "type": 1.1,
-        "is_heavy": 1.5, # Boosted! This is the causal mechanism.
-        "heavy": 1.5,    # Boosted!
-        "color": 0.5,    # Confounder Trap: Penalize color
-        "location": 0.4, # Confounder Trap: Penalize location
-        "shape": 0.7,
-        "size": 0.7
-    }
+
 
     def _strategy_add_property_filter(self, ctx: FailureContext, features: Dict[str, Any]) -> List[Patch]:
         """
@@ -727,7 +720,7 @@ class HeuristicGenerator:
                     args = ("X",)
                     patch = Patch(
                         operation=PatchOperation.ADD_NEGATED_LITERAL,
-                        target_rule_id=ctx.rule.id,
+                        target_rule_id=str(ctx.rule.id),
                         details={
                             "predicate": pred,
                             "args": args
@@ -740,7 +733,7 @@ class HeuristicGenerator:
                     args = ("X", value)
                     patch = Patch(
                         operation=PatchOperation.ADD_NEGATED_LITERAL,
-                        target_rule_id=ctx.rule.id,
+                        target_rule_id=str(ctx.rule.id),
                         details={
                             "predicate": pred,
                             "args": args
@@ -769,7 +762,7 @@ class HeuristicGenerator:
                     
                 patch = Patch(
                     operation=PatchOperation.ADD_LITERAL,
-                    target_rule_id=ctx.rule.id,
+                    target_rule_id=str(ctx.rule.id),
                     details={
                         "predicate": pred,
                         "args": args
@@ -811,7 +804,7 @@ class HeuristicGenerator:
                     
                     patch = Patch(
                         operation=PatchOperation.ADD_EXCEPTION,
-                        target_rule_id=ctx.rule.id,
+                        target_rule_id=str(ctx.rule.id),
                         details={
                             "relation": rel_pred,
                             "related_property": prop,
@@ -841,7 +834,7 @@ class HeuristicGenerator:
                 for prop, value in rel_props.items():
                     patch = Patch(
                         operation=PatchOperation.ADD_LITERAL,
-                        target_rule_id=ctx.rule.id,
+                        target_rule_id=str(ctx.rule.id),
                         details={
                             "add_body": [
                                 f"{rel_pred}(X, Y)",
@@ -909,7 +902,7 @@ class HeuristicGenerator:
             if abnormal_conditions:
                 patch = Patch(
                     operation=PatchOperation.ADD_EXCEPTION,
-                    target_rule_id=ctx.rule.id,
+                    target_rule_id=str(ctx.rule.id),
                     details={
                         "create_abnormal_rule": True,
                         "abnormal_conditions": abnormal_conditions
@@ -939,10 +932,11 @@ class HeuristicGenerator:
             return patches
         
         # Crear candidatos de rama basados en propiedades del target
-        # Priorizar por propiedades más distintivas
+        # Priorizar por propiedades más distintivas (Higher Priority First)
         sorted_props = sorted(
             target_props.items(),
-            key=lambda x: self.PROPERTY_PRIORITY.get(x[0], 99)
+            key=lambda x: self.PROPERTY_PRIORITY.get(x[0], 0.0),
+            reverse=True
         )
         
         for prop, value in sorted_props[:3]:  # Top 3 propiedades
@@ -1133,11 +1127,11 @@ class HeuristicGenerator:
                 
                 # Nombre único
                 rule_id = f"R_gen_{len(common_predicates)}"
-                new_rule = Rule(rule_id, Literal(target_pred, ("X",)), common_predicates)
+                new_rule = Rule(RuleID(rule_id), Literal(target_pred, ("X",)), common_predicates)
                 
                 patch = Patch(
                     operation=PatchOperation.CREATE_BRANCH,
-                    target_rule_id=ctx.rule.id if ctx.rule else "genesis",
+                    target_rule_id=str(ctx.rule.id) if ctx.rule else "genesis",
                     details={
                         "rule": new_rule,
                         "aux_rules": aux_rules_collected,
@@ -1163,6 +1157,7 @@ class HeuristicGenerator:
             return []
             
         X0, Z0 = ctx.target_args
+        logger.debug(f"DEBUG: Anti-Unification for {ctx.target_predicate}({X0}, {Z0})")
         
         # Helper to find paths of length 2: X -> Y -> Z
         def find_paths(facts: FactBase, start: str, end: str) -> Set[Tuple[str, str]]:
@@ -1186,6 +1181,7 @@ class HeuristicGenerator:
             return paths
 
         current_paths = find_paths(ctx.scene_facts, X0, Z0)
+        logger.debug(f"DEBUG: Current paths: {current_paths}")
         if not current_paths:
             return []
             
@@ -1203,6 +1199,7 @@ class HeuristicGenerator:
             
             # Intersect
             common = current_paths.intersection(past_paths)
+            logger.debug(f"DEBUG: Common paths with {s.id}: {common}")
             
             for p, q in common:
                 # Create rule: target(X, Z) :- p(X, Y), q(Y, Z)
@@ -1212,11 +1209,11 @@ class HeuristicGenerator:
                     Literal(p, ("X", "Y")),
                     Literal(q, ("Y", "Z"))
                 ]
-                new_rule = Rule(rule_id, head, body)
+                new_rule = Rule(RuleID(rule_id), head, body)
                 
                 patch = Patch(
                     operation=PatchOperation.CREATE_BRANCH,
-                    target_rule_id=ctx.rule.id if ctx.rule else "genesis",
+                    target_rule_id=str(ctx.rule.id) if ctx.rule else "genesis",
                     details={
                         "rule": new_rule,
                         "source_scene": s.id
@@ -1261,7 +1258,7 @@ class HeuristicGenerator:
                 # Crear parche
                 patch = Patch(
                     operation=PatchOperation.CREATE_CONCEPT,
-                    target_rule_id=ctx.rule.id,
+                    target_rule_id=str(ctx.rule.id),
                     details={
                         "concept_name": concept_name,
                         "variable": "X",
@@ -1308,7 +1305,7 @@ class HeuristicGenerator:
             head = Literal(ctx.target_predicate, ("X",), negated=True)
             body = [Literal(prop, ("X", value))]
             
-            new_rule = Rule(f"R_neg_{prop}_{value}", head, body)
+            new_rule = Rule(RuleID(f"R_neg_{prop}_{value}"), head, body)
             
             patch = Patch(
                 operation=PatchOperation.CREATE_BRANCH,
@@ -1364,7 +1361,7 @@ class PatchApplier:
                 new_body.append(parse_literal(lit_str))
             
             new_rule = Rule(
-                id=branch_id,
+                id=RuleID(branch_id),
                 head=copy.deepcopy(rule.head),
                 body=new_body,
                 confidence=patch.confidence
@@ -1382,7 +1379,7 @@ class PatchApplier:
                 concept_body.append(parse_literal(lit_str))
                 
             concept_rule = Rule(
-                id=f"Concept_{concept_name}",
+                id=RuleID(f"Concept_{concept_name}"),
                 head=Literal(concept_name, (details["variable"],)),
                 body=concept_body,
                 confidence=1.0
@@ -1454,7 +1451,7 @@ class PatchApplier:
                 # 2. CREAR LA REGLA QUE DEFINE EL BLOCKER (¡la clave!)
                 # blocked_by_material(X) :- behind(X, Y), material(Y, metal)
                 blocker_rule = Rule(
-                    id=f"{blocker_pred}_def",
+                    id=RuleID(f"{blocker_pred}_def"),
                     head=Literal(blocker_pred, ("X",)),
                     body=[
                         Literal(details["relation"], ("X", "Y")),
@@ -1489,7 +1486,7 @@ class PatchApplier:
                             body.append(Literal(cond["property"], ("X", cond["value"])))
                             
                     abnormal_rule = Rule(
-                        id=f"{abnormal_pred}_cond_{i}",
+                        id=RuleID(f"{abnormal_pred}_cond_{i}"),
                         head=Literal(abnormal_pred, ("X",)),
                         body=body,
                         confidence=1.0
@@ -1671,8 +1668,6 @@ class AnalogicalMemory:
         
         return new_patch
 
-        return new_patch
-
 
 class ComplexityEstimator:
     """
@@ -1756,8 +1751,7 @@ class HypothesisGenerator:
         # ABLATION: Disable Motifs
         self.disable_motifs = disable_motifs
         
-        # CORTEX-OMEGA: Pattern Crystallizer
-        self.crystallizer = PatternCrystallizer()
+
         
         # ABLATION: Search Strategy
         self.search_strategy = search_strategy
@@ -1949,7 +1943,7 @@ class HypothesisGenerator:
         if ctx:
             record.update({
                 "error_type": ctx.error_type,
-                "rule_id": ctx.rule.id,
+                "rule_id": str(ctx.rule.id),
                 "rule_body": [str(l) for l in ctx.rule.body],
                 "target_predicate": ctx.rule.head.predicate if ctx.rule.head else "unknown",
             })
@@ -2017,7 +2011,7 @@ if __name__ == "__main__":
     facts.add("size", ("o1", "large"))
     
     naive_rule = Rule(
-        id="R1",
+        id=RuleID("R1"),
         head=Literal("glows", ("X",)),
         body=[Literal("color", ("X", "red"))]
     )

@@ -65,16 +65,24 @@ if __name__ == "__main__":
     
     # Case A: Guest with Heavy Transaction (Should be Fraud)
     print("   Query: Guest + Heavy Transaction")
-    result_fraud = brain.query(type="guest", mass="heavy", target="fraud")
-    print(f"   Prediction: {result_fraud.prediction} (Confidence: {result_fraud.confidence:.2f})")
-    print(f"   Reasoning:  {result_fraud.explanation}")
+    try:
+        result_fraud = brain.query(type="guest", mass="heavy", target="fraud")
+        print(f"   Prediction: {result_fraud.prediction} (Confidence: {result_fraud.confidence:.2f})")
+        print(f"   Reasoning:  {result_fraud.explanation}")
+    except Exception as e:
+        print(f"   [!] Query failed: {e}")
+        result_fraud = None
     
     # Case B: Admin with Heavy Transaction (Should be Safe)
     print("\n   Query: Admin + Heavy Transaction")
-    result_safe = brain.query(type="admin", mass="heavy", target="fraud")
-    print(f"   Prediction: {result_safe.prediction}")
+    try:
+        result_safe = brain.query(type="admin", mass="heavy", target="fraud")
+        print(f"   Prediction: {result_safe.prediction}")
+    except Exception as e:
+        print(f"   [!] Query failed: {e}")
+        result_safe = None
     
-    if result_fraud.prediction and not result_safe.prediction:
+    if result_fraud and result_safe and result_fraud.prediction and not result_safe.prediction:
         print("\n[SUCCESS] Cortex successfully detected the hidden fraud pattern amidst the noise. 🚀")
     else:
-        print("\n[FAIL] Logic extraction failed.")
+        print("\n[FAIL] Logic extraction failed or queries were void.")

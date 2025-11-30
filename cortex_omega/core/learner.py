@@ -2,21 +2,14 @@ from dataclasses import dataclass
 from typing import List, Tuple, Any, Optional, Dict
 import logging
 
-from .rules import RuleBase, Scene
+from .rules import RuleBase, Scene, Literal
 from .values import ValueBase
 from .config import KernelConfig
 from .theorist import Theorist
 from .critic import Critic
 from .hypothesis import FailureContext
-from .engine import (
-    infer,
-    update_rule_stats,
-    append_to_memory,
-    garbage_collect,
-    calculate_attribute_entropy,
-    find_worst_error,
-    violates_axioms
-)
+from .inference import infer, update_rule_stats, InferenceEngine
+from .critic import Critic, garbage_collect, calculate_attribute_entropy, clone_factbase
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +30,12 @@ class Learner:
         Salida: nueva teoría, nueva memoria.
         """
         logger.debug(f"DEBUG: Start Update Theory for Scene {scene.id}")
+        
+        # Invariants
+        assert isinstance(theory, RuleBase), "Theory must be a RuleBase."
+        assert isinstance(scene, Scene), "Scene must be a Scene object."
+        assert isinstance(memory, list) and all(isinstance(s, Scene) for s in memory), "Memory must be a list of Scenes."
+
 
         # 1. Proyección
         prediction, trace = infer(theory, scene, self.config)
@@ -59,6 +58,7 @@ class Learner:
 
         # 2. Generación de teorías candidatas
         candidate_theories, ctx = self._propose_candidates(theory, scene, memory, trace, error_type)
+        logger.debug(f"DEBUG: Generated {len(candidate_theories)} candidates for {scene.id}")
 
         # 3. Evaluación y Selección
         eval_scenes = memory + [scene]
@@ -122,14 +122,17 @@ class Learner:
         best_patch = None
         
         for i, (T_candidate, patch) in enumerate(candidate_theories):
-            if violates_axioms(T_candidate, axioms, eval_scenes):
-                continue
-
+            # 3. Calcular Harmony (F1 * Stability)
             h_new = critic.score_harmony(T_candidate, eval_scenes, entropy_map)
 
+            if violates_axioms(T_candidate, axioms, eval_scenes):
+                continue
+            
+            # 4. Simulated Annealing / Greedy Selection
             accepted = False
             if h_new > best_harmony:
                 accepted = True
+                logger.debug(f"DEBUG: Candidate {i} accepted (Harmony: {best_harmony:.4f} -> {h_new:.4f}): {T_candidate}")
             else:
                 import math
                 import random
@@ -139,7 +142,11 @@ class Learner:
                 prob = math.exp(delta / temp)
                 
                 if random.random() < prob:
-                    if h_new < self.config.sa_acceptance_threshold and best_harmony > self.config.sa_acceptance_threshold:
+                    # CORTEX-OMEGA: Protection for Good Theories
+                    # If we already have a high-quality theory, don't degrade it.
+                    if best_harmony > 0.8:
+                        pass
+                    elif h_new < self.config.sa_acceptance_threshold and best_harmony > self.config.sa_acceptance_threshold:
                         pass
                     else:
                         logger.debug(f"Accepted worse candidate (Prob={prob:.4f}, T={temp:.4f}) to escape local max.")
@@ -209,3 +216,59 @@ class Learner:
                 break
                 
         return best_theory
+
+def find_worst_error(theory: RuleBase, memory: List[Scene], axioms: ValueBase) -> Optional[Scene]:
+    """
+    Encuentra la escena en memoria con el error más grave bajo la teoría actual.
+    Prioriza False Positives (regresiones) sobre False Negatives.
+    """
+    first_fp = None
+    first_fn = None
+    
+    for s in memory:
+        pred, _ = infer(theory, s)
+        if pred and not s.ground_truth:
+            # False Positive
+            first_fp = s
+            break # Stop at first FP (critical regression)
+        elif not pred and s.ground_truth:
+            # False Negative
+            if not first_fn:
+                first_fn = s
+    
+    if first_fp:
+        return first_fp
+    return first_fn
+
+def violates_axioms(
+    theory: RuleBase,
+    axioms: ValueBase,
+    eval_scenes: List[Scene],
+) -> bool:
+    """
+    Ejecuta la teoría sobre un conjunto de escenas y comprueba si alguna
+    predicción viola un axioma. Si hay una sola violación, devuelve True.
+    """
+    for s in eval_scenes:
+        facts_copy = clone_factbase(s.facts)
+        engine = InferenceEngine(facts_copy, theory)
+        engine.forward_chain()
+
+        for pred, args_set in facts_copy.facts.items():
+            for args in args_set:
+                lit = Literal(pred, args)
+                violated = axioms.check_sin(facts_copy, lit)
+                if violated is not None:
+                    return True
+    return False
+
+def append_to_memory(memory: List[Scene], scene: Scene, max_memory: int) -> List[Scene]:
+    """
+    Buffer FIFO simple.
+    """
+    new_memory = memory.copy()
+    new_memory.append(scene)
+    if len(new_memory) > max_memory:
+        new_memory = new_memory[-max_memory:]
+    return new_memory
+

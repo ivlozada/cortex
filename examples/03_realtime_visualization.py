@@ -49,21 +49,27 @@ def run_live_experiment():
         
         # Metric 1: Confidence in Stable Rule
         # Query: Blue + Light -> Float?
-        q_blue = brain.query(color='blue', mass='light') 
-        if q_blue and q_blue.prediction is True:
-             conf_blue = q_blue.confidence
-        else:
-             conf_blue = 0.0
+        try:
+            q_blue = brain.query(color='blue', mass='light') 
+            if q_blue and q_blue.prediction is True:
+                 conf_blue = q_blue.confidence
+            else:
+                 conf_blue = 0.0
+        except Exception:
+            conf_blue = 0.0
         history_blue.append(conf_blue)
 
         # Metric 2: Confidence in Volatile Rule
         # Query: Red + Heavy -> Glow?
-        q_red = brain.query(color='red', mass='heavy')
-        
-        if q_red and q_red.prediction is True:
-            conf_red = q_red.confidence
-        else:
-            # If prediction is False, confidence in "Glow" is 0.
+        try:
+            q_red = brain.query(color='red', mass='heavy')
+            
+            if q_red and q_red.prediction is True:
+                conf_red = q_red.confidence
+            else:
+                # If prediction is False, confidence in "Glow" is 0.
+                conf_red = 0.0
+        except Exception:
             conf_red = 0.0
             
         history_red.append(conf_red)

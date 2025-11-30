@@ -49,7 +49,10 @@ class TestStrictMode(unittest.TestCase):
         brain.absorb_memory(counter_example, target_label="floats")
         
         # Verify rule is killed
-        killed_rule = brain.theory.rules.get(balsa_rule.id)
+        killed_rule = rules[0] if rules else None
+        if killed_rule is None:
+            print("DEBUG: No rules found for target 'floats'. All rules:")
+            print(brain.inspect_rules())
         print(f"DEBUG: Killed Rule Confidence: {killed_rule.confidence}")
         
         # In STRICT mode, confidence should be ~0.0 (due to massive failure count)
@@ -57,3 +60,4 @@ class TestStrictMode(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+

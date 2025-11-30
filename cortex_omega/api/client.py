@@ -8,12 +8,14 @@ Provides the "5-Line Experience".
 import logging
 import pickle
 from typing import List, Dict, Optional, Any, Union
-from ..core.engine import update_theory_kernel, KernelConfig, infer
+from ..core.engine import update_theory_kernel
+from ..core.config import KernelConfig
+from ..core.inference import infer, Proof
 from ..core.rules import RuleBase, FactBase, Literal, Rule
 from ..core.values import ValueBase, Axiom
 from ..io.ingestor import SmartIngestor
 from ..core.hypothesis import HypothesisGenerator
-from ..core.inference import Proof
+
 from ..core.errors import DataFormatError, RuleParseError, CortexError, EpistemicVoidError # Added EpistemicVoidError
 
 import time
@@ -219,9 +221,25 @@ class Cortex:
         Queries the engine with a set of observations.
         Example: brain.query(mass="heavy", type="guest", target="fraud")
         """
-        # logger.debug("ENTERING QUERY")
-        
-        # 1. Construct a temporary scene from kwargs
+        from ..core.rules import Scene, FactBase, Literal
+        import copy
+
+        entity = kwargs.get("id", "query_entity")
+        target_pred = kwargs.get("target")
+
+        # === Epistemic Void guard ===
+        # If there's no theory AND no fact about target, bail out explicitly.
+        if not self.theory.rules and target_pred:
+            # Check if we *already know* target(entity) as a fact
+            direct_fact = Literal(target_pred, (entity,))
+            if not self.facts.contains(direct_fact):
+                raise EpistemicVoidError(
+                    f"No rules or facts available for target '{target_pred}'. "
+                    "The Cortex has no epistemic basis to answer this query."
+                )
+
+        # 1. Start with persistent facts
+        facts = copy.deepcopy(self.facts)
         from ..core.rules import Scene, FactBase
         import copy
         

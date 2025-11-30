@@ -32,12 +32,17 @@ def run_strobe_test():
         
         # 3. Consultar Confianza
         # Queremos saber cuánto confía en que "Rojo -> Glow"
-        q = brain.query(color='red', mass='heavy')
-        
-        if q.prediction is True:
-            conf = q.confidence
-        else:
-            # Si predice False, la confianza en "Glow" es 0
+        # 3. Consultar Confianza
+        # Queremos saber cuánto confía en que "Rojo -> Glow"
+        try:
+            q = brain.query(color='red', mass='heavy')
+            
+            if q.prediction is True:
+                conf = q.confidence
+            else:
+                # Si predice False, la confianza en "Glow" es 0
+                conf = 0.0
+        except Exception:
             conf = 0.0
             
         history_confidence.append(conf)

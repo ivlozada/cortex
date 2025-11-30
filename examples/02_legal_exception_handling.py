@@ -67,25 +67,35 @@ def run_legal_exception_test():
     
     # Test 1: Does the General Law still hold?
     print("1. Querying: Iron (Heavy)")
-    q_goliath = brain.query(mass="heavy", material="iron", target="sinks")
-    print(f"   Prediction: {q_goliath.prediction} (Expected: True)")
+    try:
+        q_goliath = brain.query(mass="heavy", material="iron", target="sinks")
+        print(f"   Prediction: {q_goliath.prediction} (Expected: True)")
+    except Exception as e:
+        print(f"   [!] Query failed: {e}")
+        q_goliath = None
     
     # Test 2: Is the Exception respected?
     print("2. Querying: Balsa (Heavy)")
-    q_david = brain.query(mass="heavy", material="balsa", target="sinks")
-    print(f"   Prediction: {q_david.prediction} (Expected: False)")
+    try:
+        q_david = brain.query(mass="heavy", material="balsa", target="sinks")
+        print(f"   Prediction: {q_david.prediction} (Expected: False)")
+    except Exception as e:
+        print(f"   [!] Query failed: {e}")
+        q_david = None
     
     # Verdict
-    if q_goliath.prediction is True and q_david.prediction is False:
+    if q_goliath and q_david and q_goliath.prediction is True and q_david.prediction is False:
         print_header("VERDICT: SUCCESS 🏆")
         print("The system successfully prioritized Specificity (Exception) over Frequency (General Rule).")
         print("This proves Cortex can handle complex legal frameworks with exceptions.")
     else:
         print_header("VERDICT: FAIL ❌")
-        if q_david.prediction is True:
+        if q_david and q_david.prediction is True:
             print("System ignored the exception (Bully Logic).")
-        if q_goliath.prediction is False:
+        if q_goliath and q_goliath.prediction is False:
             print("System forgot the general rule (Catastrophic Forgetting).")
+        if not q_goliath or not q_david:
+             print("Queries failed due to epistemic void or other errors.")
 
 if __name__ == "__main__":
     run_legal_exception_test()

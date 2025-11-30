@@ -1,7 +1,8 @@
 
 import unittest
 from cortex_omega.core.rules import Rule, Literal, RuleBase
-from cortex_omega.core.engine import score_mdl, garbage_collect
+from cortex_omega.core.critic import Critic, garbage_collect
+from cortex_omega.core.config import KernelConfig
 
 class TestMDL(unittest.TestCase):
     def test_score_mdl(self):
@@ -19,8 +20,9 @@ class TestMDL(unittest.TestCase):
         rule_b.fires_neg = 0
         # Score = 10 - 0 - 0.2 * 4 = 9.2
         
-        score_a = score_mdl(rule_a, lambda_complexity=0.2)
-        score_b = score_mdl(rule_b, lambda_complexity=0.2)
+        critic = Critic(KernelConfig())
+        score_a = critic.score_mdl(rule_a)
+        score_b = critic.score_mdl(rule_b)
         
         print(f"Score A: {score_a}, Score B: {score_b}")
         self.assertGreater(score_a, score_b)

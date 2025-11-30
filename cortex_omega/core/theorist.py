@@ -1,10 +1,13 @@
 from dataclasses import dataclass
 from typing import List, Tuple, Any, Optional, Dict
 import copy
+import logging
 
-from .rules import RuleBase, Scene, Rule, Literal
+from .rules import RuleBase, Scene, Rule, Literal, RuleID
 from .config import KernelConfig
-from .hypothesis import HypothesisGenerator, FailureContext
+from .hypothesis import HypothesisGenerator, Patch, FailureContext
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class Theorist:
@@ -68,7 +71,7 @@ def generate_structural_candidates(
             else:
                 vars = ("X",)
                 
-            culprit_rule = Rule("dummy_genesis", Literal(target_pred, vars), [])
+            culprit_rule = Rule(RuleID("dummy_genesis"), Literal(target_pred, vars), [])
         else:
             return [], None
 
@@ -95,6 +98,14 @@ def generate_structural_candidates(
     candidate_theories: List[Tuple[RuleBase, Any]] = []
 
     for patch, new_rule, aux_rules in raw_candidates:
+        # CORTEX-OMEGA: Safety Check
+        # Reject rules with unbound head variables (unsafe)
+        if not new_rule.is_safe:
+            continue
+            
+        if any(not aux.is_safe for aux in aux_rules):
+            continue
+
         # Clonar teoría completa
         T_candidate = copy.deepcopy(theory)
 
@@ -109,8 +120,8 @@ def generate_structural_candidates(
                 T_candidate.add(new_rule)
             elif culprit_rule.id in T_candidate.rules:
                 T_candidate.replace(culprit_rule.id, new_rule)
-
-        # Añadir reglas auxiliares (conceptos, excepciones, etc.)
+        
+        candidate_theories.append((T_candidate, patch))
         for aux in aux_rules:
             if aux.id in T_candidate.rules:
                 T_candidate.replace(aux.id, aux)

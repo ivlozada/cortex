@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.9.0] - 2025-11-29
+
+### Added
+- **Epistemic Safety**: Implemented `EpistemicVoidError` to prevent hallucination when the engine has no knowledge to answer a query.
+- **Exception Hierarchy**: Defined a structured exception hierarchy (`GDMError`, `InconsistentTheoryError`, etc.) in `cortex_omega.core.errors`.
+- **Debug Mode**: Added `debug=True` flag to `KernelConfig` for verbose logging and tracing.
+- **Examples**: Added a comprehensive `examples/` directory with:
+    - `01_binary_classification.py`: "Hello World".
+    - `02_relational_grandparent.py`: Relational learning.
+    - `03_robust_noisy_labels.py`: Robustness demo.
+    - `04_strobe_light_protocol.py`: Adaptability test.
+- **Documentation**: Added `docs/examples.md` and `docs/testing.md`.
+
+### Changed
+- **Robustness**: Fixed `FactBase.query` variable handling and `evaluate_f1` cheating, resolving `test_robustness.py` failures.
+- **Priority**: Standardized `PROPERTY_PRIORITY` to "Higher Value = Higher Priority", correctly prioritizing robust features (Shape) over noisy ones (Color).
+- **Cleanup**: Removed "meta-comments" and unused code in `inference.py` and `hypothesis.py`.
+
 ## [1.8.2] - 2025-11-29
 
 ### Fixed

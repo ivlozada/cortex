@@ -39,3 +39,6 @@ class KernelConfig:
     sa_acceptance_threshold: float = 0.01
     
     inference_max_iterations: int = 1000
+    
+    # Debug Mode
+    debug: bool = False

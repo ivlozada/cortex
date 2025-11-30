@@ -10,6 +10,9 @@ from collections import defaultdict
 import copy
 import time
 import hashlib
+import logging
+
+logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class RuleID:
@@ -97,6 +100,27 @@ class Rule:
         """
         return len(self.body) + 1
     
+    @property
+    def is_safe(self) -> bool:
+        """
+        Returns True if all variables in the head appear in the body.
+        """
+        head_vars = set(a for a in self.head.args if isinstance(a, str) and a and a[0].isupper())
+        body_vars = set()
+        for lit in self.body:
+            for a in lit.args:
+                if isinstance(a, str) and a and a[0].isupper():
+                    body_vars.add(a)
+        return head_vars.issubset(body_vars)
+
+    def __hash__(self):
+        return hash(self.id)
+
+    def __eq__(self, other):
+        if not isinstance(other, Rule):
+            return False
+        return self.id == other.id
+
     def __repr__(self):
         body_str = ", ".join(str(b) for b in self.body)
         conf_str = f" [{self.confidence:.2f}]" if self.confidence < 1.0 else ""
@@ -105,7 +129,7 @@ class Rule:
     def to_dict(self) -> Dict[str, Any]:
         """Serializes the rule to a dictionary."""
         return {
-            "id": self.id,
+            "id": str(self.id),
             "head": str(self.head),
             "body": [str(b) for b in self.body],
             "confidence": self.confidence,
@@ -213,6 +237,7 @@ class FactBase:
     def contains(self, literal: Literal) -> bool:
         """Verifica si un literal ground está en la base."""
         exists = literal.args in self.facts.get(literal.predicate, set())
+        # logger.debug(f"DEBUG: FactBase.contains({literal}) -> {exists} in {self.facts.get(literal.predicate, set())}")
         if literal.negated:
             return not exists
         return exists
@@ -256,6 +281,7 @@ class RuleBase:
         self.rules[rule.id] = rule
         self.rules_by_head[rule.head.predicate].append(rule.id)
         self.version += 1
+        # logger.debug(f"DEBUG: RuleBase added {rule.id}")
     
     def remove(self, rule_id: RuleID):
         """Elimina una regla."""

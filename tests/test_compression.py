@@ -1,7 +1,7 @@
 
 import unittest
 from cortex_omega.core.rules import Rule, Literal, RuleBase
-from cortex_omega.core.engine import prune_redundant_rules
+from cortex_omega.core.critic import prune_redundant_rules
 
 class TestCompression(unittest.TestCase):
     def test_subsumption_logic(self):

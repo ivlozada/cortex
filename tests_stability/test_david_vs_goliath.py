@@ -22,5 +22,5 @@ def test_david_vs_goliath():
     iron  = brain.query(material="iron",  is_heavy=True, target="sink")
     balsa = brain.query(material="balsa", is_heavy=True, target="sink")
 
-    assert iron.prediction   is True,  f"Iron should sink, got {iron.prediction}"
-    assert balsa.prediction  is False, f"Balsa should not sink, got {balsa.prediction}"
+    assert iron.prediction   is True,  f"Iron should sink, got {iron.prediction}. Reason: {iron.explanation}"
+    assert balsa.prediction  is False, f"Balsa should not sink, got {balsa.prediction}. Reason: {balsa.explanation}"

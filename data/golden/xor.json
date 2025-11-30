@@ -1,0 +1,86 @@
+[
+    {
+        "id": "xor_00",
+        "facts": {
+            "val_x": [
+                [
+                    "0"
+                ]
+            ],
+            "val_y": [
+                [
+                    "0"
+                ]
+            ]
+        },
+        "target_predicate": "xor",
+        "target_args": [
+            "0",
+            "0"
+        ],
+        "ground_truth": false
+    },
+    {
+        "id": "xor_01",
+        "facts": {
+            "val_x": [
+                [
+                    "0"
+                ]
+            ],
+            "val_y": [
+                [
+                    "1"
+                ]
+            ]
+        },
+        "target_predicate": "xor",
+        "target_args": [
+            "0",
+            "1"
+        ],
+        "ground_truth": true
+    },
+    {
+        "id": "xor_10",
+        "facts": {
+            "val_x": [
+                [
+                    "1"
+                ]
+            ],
+            "val_y": [
+                [
+                    "0"
+                ]
+            ]
+        },
+        "target_predicate": "xor",
+        "target_args": [
+            "1",
+            "0"
+        ],
+        "ground_truth": true
+    },
+    {
+        "id": "xor_11",
+        "facts": {
+            "val_x": [
+                [
+                    "1"
+                ]
+            ],
+            "val_y": [
+                [
+                    "1"
+                ]
+            ]
+        },
+        "target_predicate": "xor",
+        "target_args": [
+            "1",
+            "1"
+        ],
+        "ground_truth": false
+    }
+]

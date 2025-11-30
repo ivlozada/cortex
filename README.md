@@ -37,6 +37,16 @@ print(f"Confidence: {result.confidence:.2f}") # -> 1.00
 print(f"Explanation: {result.explanation}") # -> R_exception: ¬sink(X) :- material(X, balsa)
 ```
 
+### 🛡️ Epistemic Safety
+Cortex refuses to guess. If it has no knowledge to answer a query, it raises an `EpistemicVoidError` instead of hallucinating.
+
+```python
+try:
+    brain.query(id="unknown_obj", target="sink")
+except EpistemicVoidError:
+    print("I don't know enough to answer that.")
+```
+
 ### 🔍 Theory Inspector
 Want to see the actual logic the brain learned?
 ```python
@@ -74,7 +84,8 @@ You can fine-tune the engine's cognitive biases:
 brain = Cortex(
     mode="strict",
     feature_priors={"material": 5.0},   # Prefer 'material' explanations over others
-    noise_model={"false_positive": 0.1} # Expect 10% sensor noise
+    noise_model={"false_positive": 0.1}, # Expect 10% sensor noise
+    debug=True # Enable verbose logging and tracing
 )
 ```
 
@@ -102,9 +113,10 @@ Cortex is different. It uses **Stochastic Logic Annealing** to crystallize truth
 
 ## 📚 Official Demos
 
-*   **[`examples/10_core_capabilities_demo.py`](examples/10_core_capabilities_demo.py)**: End-to-end tour of senior detection + confounder invariance.
-*   **[`tests/test_pattern_learning_golden.py`](tests/test_pattern_learning_golden.py)**: Golden test of "heavy things sink, except balsa".
-*   **[`examples/01_financial_fraud_detection.py`](examples/01_financial_fraud_detection.py)**: Small fraud pipeline with exceptions (VIP users).
+*   **[`examples/01_binary_classification.py`](examples/01_binary_classification.py)**: "Hello World" - Simple rule learning.
+*   **[`examples/02_relational_grandparent.py`](examples/02_relational_grandparent.py)**: Relational learning (A is parent of B, B is parent of C -> A is grandparent of C).
+*   **[`examples/03_robust_noisy_labels.py`](examples/03_robust_noisy_labels.py)**: Robustness demo - Learning signal amidst noise.
+*   **[`examples/04_strobe_light_protocol.py`](examples/04_strobe_light_protocol.py)**: High-frequency adaptability test.
 
 ## 💡 Examples
 

@@ -5,8 +5,8 @@ print(f"DEBUG: sys.path: {sys.path}")
 from cortex_omega.core.rules import Literal, Rule
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
-logging.getLogger("cortex_omega").setLevel(logging.DEBUG)
+# logging.basicConfig(level=logging.DEBUG)
+# logging.getLogger("cortex_omega").setLevel(logging.DEBUG)
 
 class TestRobustness(unittest.TestCase):
     def setUp(self):

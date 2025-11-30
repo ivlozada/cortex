@@ -6,7 +6,11 @@ Forward chaining inference engine with support for negation.
 
 from typing import Dict, List, Set, Tuple, Optional, Any
 from dataclasses import dataclass
-from .rules import Literal, Rule, FactBase, RuleBase
+from .rules import Literal, Rule, FactBase, RuleBase, Scene
+from .config import KernelConfig
+import logging
+
+logger = logging.getLogger(__name__)
 from collections import defaultdict
 
 @dataclass
@@ -17,6 +21,7 @@ class DependencyIndex:
     def from_theory(cls, theory: RuleBase) -> "DependencyIndex":
         index = defaultdict(list)
         for rule in theory.rules.values():
+            # print(f"DEBUG: Indexing rule {rule.id}: {rule}")
             for lit in rule.body:
                 index[lit.predicate].append(rule)
         return cls(by_predicate=dict(index))
@@ -76,17 +81,17 @@ class InferenceEngine:
                     return None
         return bindings
     
-    def evaluate_body(self, body: List[Literal], initial_bindings: Dict[str, str] = None) -> List[Dict[str, str]]:
+    def evaluate_body(self, body: List[Literal], bindings: Dict[str, str] = None) -> List[Dict[str, str]]:
         """
         Evalúa el cuerpo de una regla (conjunción de literales).
         Retorna una lista de bindings que satisfacen el cuerpo.
         """
-        if initial_bindings is None:
-            initial_bindings = {}
-            
+        if bindings is None:
+            bindings = {}
+        # print(f"DEBUG: evaluate_body {body} bindings={bindings}")
         # Base case: empty body -> one success (current bindings)
         if not body:
-            return [initial_bindings]
+            return [bindings]
             
         first = body[0]
         rest = body[1:]
@@ -94,7 +99,7 @@ class InferenceEngine:
         results = []
         
         # 1. Find bindings for the first literal
-        candidates = self._get_bindings_for_literal(first, initial_bindings)
+        candidates = self._get_bindings_for_literal(first, bindings)
         
         for binding in candidates:
             # 2. Recursive step
@@ -115,8 +120,13 @@ class InferenceEngine:
         
         # Apply current_bindings to the literal first
         ground_literal = literal.ground(current_bindings)
+        # print(f"DEBUG: ground_literal {ground_literal}")
         
-        # CORTEX-OMEGA: Built-in operator support
+        # 2. Query facts
+        # DEBUG:
+        # print(f"[ENGINE] ground_literal: {ground_literal}")
+        # print(f"[ENGINE] facts for {ground_literal.predicate}: {self.facts.facts.get(ground_literal.predicate, set())}")
+        
         if ground_literal.predicate in {">", "<", ">=", "<=", "=", "!="}:
             if ground_literal.is_ground():
                 try:
@@ -162,7 +172,16 @@ class InferenceEngine:
         else:
             # Literal positivo: buscar matches
             found_bindings = []
-            for fact_args in self.facts.query(ground_literal.predicate):
+            
+            # CORTEX-OMEGA: Sanitize args for query (Variables -> None)
+            query_args = []
+            for arg in ground_literal.args:
+                if isinstance(arg, str) and arg and arg[0].isupper():
+                    query_args.append(None)
+                else:
+                    query_args.append(arg)
+            
+            for fact_args in self.facts.query(ground_literal.predicate, tuple(query_args)):
                 new_bindings = self.unify(ground_literal, fact_args)
                 if new_bindings is not None:
                     merged = {**current_bindings, **new_bindings}
@@ -440,3 +459,137 @@ class InferenceEngine:
                 min_conf = min(min_conf, rule.confidence)
                 
         return Proof(steps=steps, confidence=min_conf)
+
+def infer(theory: RuleBase, scene: Scene, config: Optional[KernelConfig] = None) -> Tuple[bool, List[Dict[str, Any]]]:
+    """
+    Realiza inferencia sobre una escena usando la teoría dada.
+    Retorna (predicción, traza).
+    """
+    engine = InferenceEngine(scene.facts, theory)
+    max_iter = config.inference_max_iterations if config else 1000
+    engine.forward_chain(max_iterations=max_iter)
+    
+    # Verificar si el target fue derivado
+    if scene.target_args:
+        target = Literal(scene.target_predicate, scene.target_args)
+    else:
+        target = Literal(scene.target_predicate, (scene.target_entity,))
+        
+    # CORTEX-OMEGA v1.3: Conflict Resolution
+    pos_proof = engine.get_proof(target)
+    
+    if scene.target_args:
+        neg_target = Literal(f"NOT_{scene.target_predicate}", scene.target_args)
+    else:
+        neg_target = Literal(f"NOT_{scene.target_predicate}", (scene.target_entity,))
+    neg_proof = engine.get_proof(neg_target)
+    
+    # logger.debug(f"DEBUG: infer({scene.target_predicate}) -> {prediction}")
+    prediction = False
+    trace = getattr(engine, "trace", [])
+    
+    if pos_proof and not neg_proof:
+        prediction = True
+        trace = []
+        for step in pos_proof.steps:
+            trace.append({
+                "type": "derivation",
+                "rule_id": step.rule_id,
+                "derived": step.derived_fact,
+                "bindings": step.bindings
+            })
+    elif not pos_proof and neg_proof:
+        prediction = False
+        trace = []
+        for step in neg_proof.steps:
+            trace.append({
+                "type": "derivation",
+                "rule_id": step.rule_id,
+                "derived": step.derived_fact,
+                "bindings": step.bindings
+            })
+    elif pos_proof and neg_proof:
+        if pos_proof.confidence > neg_proof.confidence:
+            prediction = True
+        logger.debug(f"Inference Trace for {scene.target_entity}:")
+        for step in trace:
+            logger.debug(f"  - {step}")
+        import time
+        for step in trace:
+            if step["type"] == "derivation":
+                rid = step["rule_id"]
+                if rid in theory.rules:
+                    theory.rules[rid].usage_count += 1
+                    theory.rules[rid].last_used = time.time()
+    
+    return prediction, trace
+
+def update_rule_stats(theory: RuleBase, trace: List[Dict[str, Any]], is_correct: bool, config: KernelConfig):
+    """
+    CORTEX-OMEGA v1.4: First-Class Rule Statistics.
+    Updates fires_pos, fires_neg, support, failure, and confidence for ALL firing rules.
+    """
+    updated = set()
+    for step in trace:
+        if step["type"] == "derivation":
+            rid = step["rule_id"]
+            if rid in theory.rules and rid not in updated:
+                rule = theory.rules[rid]
+                
+                if is_correct:
+                    rule.fires_pos += 1
+                    rule.support_count += 1
+                else:
+                    rule.fires_neg += 1
+                    
+                    # CORTEX-OMEGA v1.3: Mode-based Punishment
+                    mode = config.mode
+                    if mode == "strict":
+                        rule.failure_count = 1_000_000
+                        logger.info(f"💀 STRICT MODE: Rule {rid} killed due to counter-example.")
+                    else:
+                        rule.failure_count += 1
+                
+                # Bayesian Update
+                s = rule.support_count
+                f = rule.failure_count
+                rule.confidence = (s + 1.0) / (s + f + 2.0)
+                    
+                updated.add(rid)
+
+def reward_rules(theory: RuleBase, trace: List[Dict[str, Any]], target_predicate: str, ground_truth: bool, reward: float = 0.1):
+    """
+    CORTEX-OMEGA v1.3: Bayesian Reward.
+    Updates support counts and recalculates confidence.
+    Only rewards rules that derived facts consistent with the final outcome.
+    """
+    rewarded = set()
+    
+    for step in trace:
+        if step["type"] == "derivation":
+            rid = step["rule_id"]
+            derived_lit = step["derived"]
+            pred_name = derived_lit.predicate
+            is_negated = derived_lit.negated
+            
+            should_reward = False
+            
+            # CORTEX-OMEGA v1.6: Reward ALL rules in the trace if the outcome was correct.
+            # This ensures auxiliary rules (exceptions, concepts) get credit.
+            should_reward = True
+            
+            if should_reward:
+                if rid in theory.rules and rid not in rewarded:
+                    rule = theory.rules[rid]
+                    rule.support_count += 1
+                    # rule.fires_pos is now handled in update_rule_stats
+                    
+                    # Bayesian Update
+                    s = rule.support_count
+                    f = rule.failure_count
+                    
+                    # New Confidence
+                    rule.confidence = (s + 1.0) / (s + f + 2.0)
+                    
+                    rewarded.add(rid)
+

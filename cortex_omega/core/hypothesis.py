@@ -743,13 +743,15 @@ class HeuristicGenerator:
             # p(start, Y)
             first_hops = []
             for pred, args_set in facts.facts.items():
-                for args in args_set:
+                # Sort for determinism
+                for args in sorted(list(args_set)):
                     if len(args) == 2 and args[0] == start:
                         first_hops.append((pred, args[1])) # (p, Y)
             
             for p, Y in first_hops:
                 # Check for q(Y, end)
                 for pred, args_set in facts.facts.items():
+                    # Check existence (no need to sort for existence check)
                     if (Y, end) in args_set:
                         paths.add((p, pred))
             return paths
@@ -775,7 +777,8 @@ class HeuristicGenerator:
             common = current_paths.intersection(past_paths)
             logger.debug(f"DEBUG: Common paths with {s.id}: {common}")
             
-            for p, q in common:
+            # Sort for determinism
+            for p, q in sorted(list(common)):
                 # Create rule: target(X, Z) :- p(X, Y), q(Y, Z)
                 rule_id = f"R_rel_{p}_{q}"
                 head = Literal(ctx.target_predicate, ("X", "Z"))

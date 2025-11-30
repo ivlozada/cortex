@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cortex-omega"
-version = "2.0.8"
+version = "2.1.0"
 description = "A Neuro-Symbolic AI Kernel for logical induction and rule learning. No prompts. Just logic."
 readme = "README.md"
 requires-python = ">=3.7"

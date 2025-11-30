@@ -30,7 +30,7 @@ class Critic:
         scenes: List[Scene],
         entropy_map: Dict[str, float] = None,
     ) -> float:
-        score = evaluate_f1(theory, scenes)
+        score = evaluate_f1(theory, scenes, self.config)
         complexity = self._compute_complexity(theory, entropy_map)
         harmony = score / (1.0 + self.config.lambda_complexity * complexity)
         return harmony
@@ -83,7 +83,7 @@ def clone_factbase(fb: FactBase) -> FactBase:
             fb_copy.add(pred, args)
     return fb_copy
 
-def evaluate_f1(theory: RuleBase, scenes: List[Scene]) -> float:
+def evaluate_f1(theory: RuleBase, scenes: List[Scene], config: Optional[KernelConfig] = None) -> float:
     """
     Calcula F1-Score de la teoría sobre un conjunto de escenas.
     """
@@ -110,7 +110,7 @@ def evaluate_f1(theory: RuleBase, scenes: List[Scene]) -> float:
             target_args=s.target_args
         )
         
-        pred, _ = infer(theory, masked_scene)
+        pred, _ = infer(theory, masked_scene, config)
         
         if pred and s.ground_truth:
             tp += 1
@@ -186,7 +186,6 @@ def garbage_collect(theory: RuleBase, threshold: float = 0.0, config: Optional[K
     # CORTEX-OMEGA v1.4: Use MDL Score
     # Threshold 0.0 means "Does more harm than good" (fires_neg > fires_pos - complexity penalty)
     
-    lambda_val = config.lambda_complexity if config else 0.2
     critic = Critic(config or KernelConfig())
     
     for rid, rule in list(theory.rules.items()):

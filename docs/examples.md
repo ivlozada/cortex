@@ -122,3 +122,38 @@ result = cortex.query(shape="circle", color="red", target="target")
    Cycle 020: Reality is ON  | Cortex Confidence: 0.85
 [SUCCESS] Strobe graph generated: cortex_strobe_proof.png
 ```
+
+---
+
+## 12. Recursive Arithmetic (Project Gödel)
+**Script:** `examples/12_recursive_arithmetic.py`
+
+**Concept:** Demonstrates learning recursive rules and structured terms (Peano Arithmetic).
+
+**Scenario:**
+- **Representation:** Numbers are nested terms: `0` -> `zero`, `1` -> `s(zero)`, `2` -> `s(s(zero))`.
+- **Goal:** Learn addition `add(X, Y, Z)` from examples.
+- **Learned Logic:**
+    1. Base Case: `add(X, zero, X)`
+    2. Recursive Step: `add(X, s(Y), s(Z)) :- add(X, Y, Z)`
+
+**Pseudo-Code:**
+```python
+# Teach 0+0=0, 0+1=1, 1+0=1, 1+1=2...
+cortex.absorb(examples)
+
+# Query 4+1=5 (Unseen)
+# Cortex uses the recursive rule to decompose 4+1 -> 4+0 -> 4, then rebuilds to 5.
+result = cortex.query(add(s(s(s(s(zero)))), s(zero), Z))
+# Expect: Z = s(s(s(s(s(zero)))))
+```
+
+**Expected Output:**
+```
+📜 Learned Rules:
+  - add(X, zero, X)
+  - add(X, s(Y), s(Z)) :- add(X, Y, Z)
+
+🧮 Testing Generalization (4+1=5)...
+  4 + 1 = 5? -> True
+```

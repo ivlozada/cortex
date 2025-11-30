@@ -24,6 +24,7 @@ Initializes a new Cortex kernel instance.
     * `noise_model` (*dict, optional*): Expected noise rates (e.g., `{"false_positive": 0.05}`).
     * `plasticity` (*dict, optional*): Parameters for rule retention and memory limits.
     * `feature_priors` (*dict, optional*): Causal hints for feature selection (e.g., `{"color": 0.1, "material": 0.9}`).
+    * `random_seed` (*int, optional*): Seed for deterministic behavior (CI/Testing).
 
 #### `absorb(self, file_path: str, target_col: str = None)`
 Ingests a raw data file (CSV/JSON), performs entropy analysis to identify noise, and updates the internal logic theory.

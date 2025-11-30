@@ -89,8 +89,9 @@ class DiscriminativeFeatureSelector:
             score = impact * support
             
             # CORTEX-OMEGA v1.5: Feature Priors
-            if pred in ctx.feature_priors:
-                score *= ctx.feature_priors[pred]
+            feature_priors = getattr(ctx, "feature_priors", {}) or {}
+            if pred in feature_priors:
+                score *= feature_priors[pred]
             
             # CORTEX-OMEGA v1.4: Confounder Invariance (Stability Check)
             # Split memory into Early/Late to detect drift.

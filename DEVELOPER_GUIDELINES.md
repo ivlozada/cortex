@@ -30,7 +30,13 @@ This is NOT a script; it is a sensitive AI Framework.
 5.  **REFACTOR BEFORE EXTENDING**
     * If you see a "God Function" (like `update_theory_kernel`), DO NOT add more branches to it.
     * Extract logic into small, testable helper functions.
+    * Extract logic into small, testable helper functions.
     * Do not create duplicate blocks of code.
+
+6.  **CLEAN OUTPUT (NO PRINT STATEMENTS)**
+    * **NEVER** leave `print()` statements in production code.
+    * Use `logger.debug()` for debugging.
+    * Ensure CI logs are clean and readable.
 
 ---
 
@@ -38,8 +44,21 @@ This is NOT a script; it is a sensitive AI Framework.
 
 * **Core Kernel:** Handles the learning loop. Currently transitioning away from monolithic functions.
 * **Inference Engine:** Uses Forward Chaining. Be careful with O(N^2) complexity.
+* **Strategies:** Pluggable logic repair modules (`strategies.py`). Use `RepairStrategy` for new capabilities.
 * **Memory:** `RuleBase` (Logic) and `FactBase` (Data).
 * **Values:** `Axioms` prevent "immoral" or prohibited learning.
+
+## 🧬 v2.x ARCHITECTURE (PROJECT GÖDEL)
+
+### Recursive Terms
+*   **Representation**: We now support nested terms (e.g., `s(s(zero))`).
+*   **Safety**: ALWAYS check `_get_term_depth(term)` before processing.
+*   **Unification**: Use `InferenceEngine._unify_term` for deep unification.
+
+### Strategy Pattern
+*   Do not add monolithic logic to `HypothesisGenerator`.
+*   Create a new class in `strategies.py` inheriting from `RepairStrategy`.
+*   Register it in `HypothesisGenerator.__init__`.
 
 ## 📝 CODING STYLE
 

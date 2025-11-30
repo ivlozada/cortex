@@ -125,7 +125,7 @@ class Learner:
             # 3. Calcular Harmony (F1 * Stability)
             h_new = critic.score_harmony(T_candidate, eval_scenes, entropy_map)
 
-            if violates_axioms(T_candidate, axioms, eval_scenes):
+            if violates_axioms(T_candidate, axioms, eval_scenes, self.config):
                 continue
             
             # 4. Simulated Annealing / Greedy Selection
@@ -176,7 +176,7 @@ class Learner:
         critic = Critic(self.config)
         
         for i in range(self.config.max_refinement_steps):
-            worst_scene = find_worst_error(best_theory, memory, axioms)
+            worst_scene = find_worst_error(best_theory, memory, axioms, self.config)
             
             if not worst_scene:
                 break
@@ -200,7 +200,7 @@ class Learner:
             improved = False
             
             for j, (T_cand, patch) in enumerate(refinement_candidates):
-                if violates_axioms(T_cand, axioms, eval_scenes):
+                if violates_axioms(T_cand, axioms, eval_scenes, self.config):
                     continue
                     
                 h_cand = critic.score_harmony(T_cand, eval_scenes, entropy_map)
@@ -217,7 +217,7 @@ class Learner:
                 
         return best_theory
 
-def find_worst_error(theory: RuleBase, memory: List[Scene], axioms: ValueBase) -> Optional[Scene]:
+def find_worst_error(theory: RuleBase, memory: List[Scene], axioms: ValueBase, config: Optional[KernelConfig] = None) -> Optional[Scene]:
     """
     Encuentra la escena en memoria con el error más grave bajo la teoría actual.
     Prioriza False Positives (regresiones) sobre False Negatives.
@@ -226,7 +226,7 @@ def find_worst_error(theory: RuleBase, memory: List[Scene], axioms: ValueBase) -
     first_fn = None
     
     for s in memory:
-        pred, _ = infer(theory, s)
+        pred, _ = infer(theory, s, config)
         if pred and not s.ground_truth:
             # False Positive
             first_fp = s
@@ -244,15 +244,17 @@ def violates_axioms(
     theory: RuleBase,
     axioms: ValueBase,
     eval_scenes: List[Scene],
+    config: Optional[KernelConfig] = None
 ) -> bool:
     """
     Ejecuta la teoría sobre un conjunto de escenas y comprueba si alguna
     predicción viola un axioma. Si hay una sola violación, devuelve True.
     """
+    max_iter = config.inference_max_iterations if config else 1000
     for s in eval_scenes:
         facts_copy = clone_factbase(s.facts)
         engine = InferenceEngine(facts_copy, theory)
-        engine.forward_chain()
+        engine.forward_chain(max_iterations=max_iter)
 
         for pred, args_set in facts_copy.facts.items():
             for args in args_set:

@@ -6,7 +6,7 @@ Forward chaining inference engine with support for negation.
 
 from typing import Dict, List, Set, Tuple, Optional, Any
 from dataclasses import dataclass
-from .rules import Literal, Rule, FactBase, RuleBase, Scene
+from .rules import Literal, Rule, FactBase, RuleBase, Scene, Term
 from .config import KernelConfig
 import logging
 
@@ -63,23 +63,83 @@ class InferenceEngine:
         self.dependency_index = DependencyIndex.from_theory(rule_base)
 
     
-    def unify(self, literal: Literal, fact_args: Tuple[str, ...]) -> Optional[Dict[str, str]]:
+    def unify(self, literal: Literal, fact_args: Tuple[Any, ...]) -> Optional[Dict[str, Any]]:
         """Intenta unificar un literal con un hecho. Retorna bindings o None."""
         if len(literal.args) != len(fact_args):
             return None
         
         bindings = {}
         for lit_arg, fact_arg in zip(literal.args, fact_args):
-            if isinstance(lit_arg, str) and lit_arg and lit_arg[0].isupper():  # Es variable
-                if lit_arg in bindings:
-                    if bindings[lit_arg] != fact_arg:
-                        return None
-                else:
-                    bindings[lit_arg] = fact_arg
-            else:  # Es constante
-                if lit_arg != fact_arg:
-                    return None
+            if not self._unify_term(lit_arg, fact_arg, bindings):
+                return None
         return bindings
+
+    def _get_term_depth(self, term: Term) -> int:
+        if not term.args: return 1
+        max_depth = 0
+        for arg in term.args:
+            if isinstance(arg, Term):
+                d = self._get_term_depth(arg)
+                if d > max_depth: max_depth = d
+        return 1 + max_depth
+            
+    def _unify_term(self, term1: Any, term2: Any, bindings: Dict[str, Any]) -> bool:
+        """Recursive unification of two terms."""
+        # 1. Handle Variables in term1
+        if isinstance(term1, str) and term1 and term1[0].isupper():
+            return self._bind(term1, term2, bindings)
+        if isinstance(term1, Term) and term1.is_variable():
+            return self._bind(term1.name, term2, bindings)
+            
+        # 2. Handle Variables in term2 (if we support bidirectional unification later)
+        # For now, fact_args are usually ground, but let's be safe
+        
+        # 3. Handle Terms
+        if isinstance(term1, Term) and isinstance(term2, Term):
+            if term1.name != term2.name:
+                return False
+            if len(term1.args) != len(term2.args):
+                return False
+            for a1, a2 in zip(term1.args, term2.args):
+                if not self._unify_term(a1, a2, bindings):
+                    return False
+            return True
+            
+        # 4. Handle Strings (Legacy Constants)
+        if isinstance(term1, str) and isinstance(term2, str):
+            return term1 == term2
+            
+        # 5. Mixed types (Term vs String) -> Fail unless one is a variable (handled above)
+        # Actually, Term("a") should match "a"? No, let's keep them distinct for now.
+        return term1 == term2
+
+    def _bind(self, var_name: str, value: Any, bindings: Dict[str, Any]) -> bool:
+        if var_name in bindings:
+            # Check consistency
+            return bindings[var_name] == value
+            
+        # Occurs Check: Prevent X = s(X)
+        if isinstance(value, Term) and self._occurs_check(var_name, value, bindings):
+            return False
+            
+        bindings[var_name] = value
+        return True
+        
+    def _occurs_check(self, var_name: str, term: Term, bindings: Dict[str, Any]) -> bool:
+        if term.is_variable():
+            if term.name == var_name:
+                return True
+            # Follow binding if exists
+            if term.name in bindings:
+                val = bindings[term.name]
+                if isinstance(val, Term):
+                    return self._occurs_check(var_name, val, bindings)
+            return False
+            
+        for arg in term.args:
+            if isinstance(arg, Term) and self._occurs_check(var_name, arg, bindings):
+                return True
+        return False
     
     def evaluate_body(self, body: List[Literal], bindings: Dict[str, str] = None) -> List[Dict[str, str]]:
         """
@@ -178,6 +238,8 @@ class InferenceEngine:
             for arg in ground_literal.args:
                 if isinstance(arg, str) and arg and arg[0].isupper():
                     query_args.append(None)
+                elif isinstance(arg, Term) and arg.is_variable():
+                    query_args.append(None)
                 else:
                     query_args.append(arg)
             
@@ -242,6 +304,7 @@ class InferenceEngine:
         if logger is None:
             import logging
             logger = logging.getLogger(__name__)
+        # logger.debug(f"forward_chain started with max_iterations={max_iterations}")
 
         # Stratification
         early_rules = [r for r in self.rules.rules.values() if not any(l.negated for l in r.body)]
@@ -289,6 +352,13 @@ class InferenceEngine:
                     
                     for bindings in body_results:
                         head_ground = rule.head.ground(bindings)
+                        
+                        # DEBUG: Check for monster terms
+                        for arg in head_ground.args:
+                            d = self._get_term_depth(arg)
+                            if isinstance(arg, Term) and d > 200:
+                                logger.error(f"Monster term generated by rule {rule.id}: {arg._repr_safe(0)} (Depth: {d})")
+                                raise ValueError(f"Term too deep! Rule: {rule.id}")
                         
                         # If head is already in facts, skip
                         if self.facts.contains(head_ground):

@@ -33,11 +33,32 @@ class RuleID:
         return hash(self.uid)
 
 
+@dataclass(frozen=True)
+class Term:
+    """A structured term: name(arg1, arg2, ...) or just name."""
+    name: str
+    args: Tuple['Term', ...] = ()
+    
+    def __repr__(self):
+        return self._repr_safe(0)
+        
+    def _repr_safe(self, depth):
+        if depth > 10: return "..."
+        if not self.args: return self.name
+        args_str = ", ".join(a._repr_safe(depth+1) if isinstance(a, Term) else str(a) for a in self.args)
+        return f"{self.name}({args_str})"
+
+    def __str__(self):
+        return self.__repr__()
+
+    def is_variable(self) -> bool:
+        return not self.args and self.name and self.name[0].isupper()
+
 @dataclass
 class Literal:
     """Un átomo lógico: predicate(arg1, arg2, ...)"""
     predicate: str
-    args: Tuple[str, ...]
+    args: Tuple[Any, ...] # Can be str (legacy) or Term (new)
     negated: bool = False
     
     def __hash__(self):
@@ -48,14 +69,42 @@ class Literal:
                 self.args == other.args and 
                 self.negated == other.negated)
     
-    def ground(self, bindings: Dict[str, str]) -> 'Literal':
+    def ground(self, bindings: Dict[str, Any]) -> 'Literal':
         """Sustituye variables por valores concretos."""
-        new_args = tuple(bindings.get(a, a) for a in self.args)
-        return Literal(self.predicate, new_args, self.negated)
+        # This needs to be updated for Terms, but for now keep legacy support
+        new_args = []
+        for a in self.args:
+            if isinstance(a, str):
+                new_args.append(bindings.get(a, a))
+            elif isinstance(a, Term):
+                # Deep substitution for Terms
+                new_args.append(self._ground_term(a, bindings))
+            else:
+                new_args.append(a)
+        return Literal(self.predicate, tuple(new_args), self.negated)
+
+    def _ground_term(self, term: Term, bindings: Dict[str, Any]) -> Term:
+        if term.is_variable():
+            val = bindings.get(term.name, term)
+            if isinstance(val, str):
+                return Term(val) # Convert string binding to Term
+            return val
+        
+        new_args = tuple(self._ground_term(arg, bindings) for arg in term.args)
+        return Term(term.name, new_args)
     
     def is_ground(self) -> bool:
         """True si no tiene variables (args que empiezan con mayúscula)."""
-        return all(not (isinstance(a, str) and a and a[0].isupper()) for a in self.args)
+        for a in self.args:
+            if isinstance(a, str):
+                if a and a[0].isupper(): return False
+            elif isinstance(a, Term):
+                if not self._is_ground_term(a): return False
+        return True
+
+    def _is_ground_term(self, term: Term) -> bool:
+        if term.is_variable(): return False
+        return all(self._is_ground_term(arg) for arg in term.args)
     
     def __repr__(self):
         neg = "¬" if self.negated else ""
@@ -348,6 +397,35 @@ class Scene:
 
 
 # === Funciones de Conveniencia ===
+
+def parse_term(s: str) -> Term:
+    """Parses a string into a Term object. e.g. 's(s(0))' -> Term('s', (Term('s', (Term('0'),)),))"""
+    s = s.strip()
+    if "(" not in s:
+        return Term(s)
+    
+    # Simple recursive parser
+    name_end = s.index("(")
+    name = s[:name_end].strip()
+    args_str = s[name_end+1:-1]
+    
+    args = []
+    depth = 0
+    current = ""
+    for c in args_str:
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+        elif c == "," and depth == 0:
+            args.append(parse_term(current))
+            current = ""
+            continue
+        current += c
+    if current.strip():
+        args.append(parse_term(current))
+        
+    return Term(name, tuple(args))
 
 def parse_literal(s: str) -> Literal:
     """Parsea una cadena como 'predicate(arg1, arg2)' o '¬predicate(arg1)'."""

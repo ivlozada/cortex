@@ -20,11 +20,11 @@ from collections import defaultdict
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Set, Tuple, Optional, Any, TYPE_CHECKING
-from typing import Dict, List, Set, Tuple, Optional, Any, TYPE_CHECKING
+
 from .rules import Rule, Literal, FactBase, Scene, RuleBase, RuleID, parse_literal
 from .inference import InferenceEngine
 from .types import Patch, PatchOperation, FailureContext
-from .strategies import NumericThresholdStrategy, TemporalConstraintStrategy
+from .strategies import NumericThresholdStrategy, TemporalConstraintStrategy, RecursiveStructureStrategy, ArgumentGeneralizationStrategy
 import copy
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,7 @@ class FeatureExtractor:
         # CORTEX-OMEGA: Feature Selection
         selector = DiscriminativeFeatureSelector(min_score=0.1) # Higher threshold to avoid noise
         relevant_predicates = selector.select_features(ctx)
+        features["discriminating_features"] = list(relevant_predicates)
         
         # Propiedades del target
         for pred, args_set in ctx.scene_facts.facts.items():
@@ -139,6 +140,8 @@ class HeuristicGenerator:
             self._strategy_contrastive_refinement, # NUEVO: Refinamiento contrastivo
             self._strategy_create_negative_rule,   # NUEVO: Explicit Negation
             NumericThresholdStrategy(config),  # CORTEX-OMEGA v1.4: Numeric Thresholds
+            RecursiveStructureStrategy(config), # CORTEX-OMEGA v2.0: Recursive Structure
+            ArgumentGeneralizationStrategy(config), # CORTEX-OMEGA v2.0: Base Cases
         ]
         
         # CORTEX-OMEGA: Meta-Cognition
@@ -243,7 +246,7 @@ class HeuristicGenerator:
             priority_names = features['cortex_priorities']
             # Sort strategies: those in priority_names come first, in order.
             def get_strat_name(s):
-                return s.__name__ if hasattr(s, '__name__') else s.name
+                return getattr(s, "__name__", getattr(s, "name", s.__class__.__name__))
             strategies.sort(key=lambda s: priority_names.index(get_strat_name(s)) if get_strat_name(s) in priority_names else 999)
             
         for strategy in strategies:
@@ -1233,6 +1236,7 @@ class AnalogicalMemory:
             # Check if the literal uses constants
             lit = patch.details.get("literal") # This might be a Literal object or dict
             # If it's a dict (serialized)
+            # TODO: Implement robust value adaptation logic for v2.x
             pass 
             
         # For v1, we will trust that if the context is similar enough, the patch might apply directly
@@ -1299,9 +1303,12 @@ class HypothesisGenerator:
         # ABLATION: Disable Concept Invention
         if disable_concept_invention:
             # Remove _strategy_create_concept from strategies
+            def strat_name(s):
+                return getattr(s, "__name__", getattr(s, "name", s.__class__.__name__))
+            
             self.heuristic_generator.strategies = [
                 s for s in self.heuristic_generator.strategies 
-                if s.__name__ != "_strategy_create_concept"
+                if strat_name(s) != "_strategy_create_concept"
             ]
             
         self.patch_applier = PatchApplier()
@@ -1372,7 +1379,6 @@ class HypothesisGenerator:
         import math
         import sys
         
-
         # 0. Extract Features
         features = self.feature_extractor.extract(ctx)
         

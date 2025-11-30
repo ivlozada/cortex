@@ -109,6 +109,13 @@ Run it: `python examples/10_killer_demo_prometheus.py`
 *   **Result**: It correctly predicts viral hits while strictly banning false content, even from influencers.
 Run it: `python examples/11_project_cassandra.py`
 
+### 3. Project Gödel (Recursive Arithmetic)
+**New in v2.0.0**: Demonstrates the ability to learn recursive rules and structured terms (Peano Arithmetic).
+*   **Goal**: Learn addition `add(X, Y, Z)` from examples like `0+0=0`, `0+1=1`, `1+1=2`.
+*   **Representation**: Uses nested terms `s(s(zero))` instead of flat strings.
+*   **Result**: Learns the recursive rule `add(X, s(Y), s(Z)) :- add(X, Y, Z)` and generalizes to unseen numbers (e.g., `4+1=5`).
+Run it: `python examples/12_recursive_arithmetic.py`
+
 ## 📦 Installations).
 
 ---
@@ -122,6 +129,7 @@ Cortex is different. It uses **Stochastic Logic Annealing** to crystallize truth
 ### Key Capabilities
 
 *   **Rule Induction with Exceptions**: Learns "David vs. Goliath" logic (specific rules override general ones).
+*   **Recursive Term Support (v2.0)**: Handles nested structures (e.g., `s(s(zero))`) and learns recursive rules (Project Gödel).
 *   **Glass-Box Explanations**: Every prediction comes with a logical proof trace.
 *   **Robustness to Noise**: Bayesian scoring filters out spurious correlations and confounders.
 *   **Clean Python API**: Designed for engineers, not just researchers.

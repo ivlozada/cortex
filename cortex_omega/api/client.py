@@ -205,6 +205,12 @@ class Cortex:
                         facts.add(stripped, (target_entity,))
                         self.facts.add(stripped, (target_entity,))
                 
+            # CORTEX-OMEGA: Merge Global Facts
+            # This allows learning from background knowledge (e.g. family tree)
+            for pred, args_set in self.facts.facts.items():
+                for args in args_set:
+                    facts.add(pred, args)
+
             # Create Scene
             scene = Scene(
                 id=scene_id,

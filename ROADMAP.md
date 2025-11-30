@@ -54,3 +54,23 @@ Position Cortex as the "Logical Guardrail" for LLMs. "No prompts. No hallucinati
 - **Hallucination Check**: Verify LLM outputs against the Cortex Fact Store.
 - **Hybrid Pipeline**: `LLM(Unstructured) -> Cortex(Structured) -> Action`.
 
+## v2.0.0: The "Architectural Renaissance" (Released)
+### Strategy
+Refactor the core engine to be modular, extensible, and ready for advanced logic (Project Gödel).
+
+### Features
+- **Strategy Pattern**: `HypothesisGenerator` now uses pluggable `RepairStrategy` classes.
+- **Unified Config**: Centralized `KernelConfig` for all hyperparameters.
+- **Clean Architecture**: Removal of monolithic "God Functions".
+
+## v2.x: Project Gödel (Current Focus)
+### Strategy
+Enable **Recursive Logic** and **Infinite Domains** (Peano Arithmetic, Lists, Trees).
+
+### Features
+- **Recursive Terms**: Support for nested function symbols `s(s(zero))`.
+- **Recursive Unification**: Deep unification for complex terms.
+- **New Strategies**:
+    - `RecursiveStructureStrategy`: Learns `p(s(X)) :- p(X)`.
+    - `ArgumentGeneralizationStrategy`: Learns invariants in argument structure.
+- **Killer Demo**: `examples/12_recursive_arithmetic.py` (Peano Addition).

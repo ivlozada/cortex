@@ -8,7 +8,7 @@ Provides the "5-Line Experience".
 import logging
 import pickle
 from typing import List, Dict, Optional, Any, Union
-from ..core.engine import update_theory_kernel
+from ..core.learner import Learner
 from ..core.config import KernelConfig
 from ..core.inference import infer, Proof
 from ..core.rules import RuleBase, FactBase, Literal, Rule
@@ -71,14 +71,19 @@ class Cortex:
             feature_priors=feature_priors or {}
         )
         self.theory = RuleBase()
-        self.memory = []
         self.axioms = ValueBase()
+        self.memory: List[Any] = [] # List of Scenes
         self.facts = FactBase() # CORTEX-OMEGA: Persistent Knowledge Base
+        
+        # Initialize Learner
+        self.learner = Learner(self.config)
+        
+        # Initialize Ingestor
         self.ingestor = SmartIngestor()
         
         # Initialize sub-components
         if not self.config.patch_generator:
-            self.config.patch_generator = HypothesisGenerator()
+            self.config.patch_generator = HypothesisGenerator(config=self.config)
             
     def set_mode(self, mode: str):
         """
@@ -122,8 +127,8 @@ class Cortex:
         for i, scene in enumerate(scenes):
             if i % 10 == 0:
                 logger.debug(f"  Processing datum {i}/{len(scenes)}...")
-            self.theory, self.memory = update_theory_kernel(
-                self.theory, scene, self.memory, self.axioms, self.config
+            self.theory, self.memory = self.learner.learn(
+                self.theory, scene, self.memory, self.axioms
             )
         
         duration = time.time() - start_time
@@ -212,8 +217,9 @@ class Cortex:
                 self.facts.add(target_label, (target_entity,))
             
             # Learn
-            self.theory, self.memory = update_theory_kernel(
-                self.theory, scene, self.memory, self.axioms, self.config
+            # Learn
+            self.theory, self.memory = self.learner.learn(
+                self.theory, scene, self.memory, self.axioms
             )
 
     def query(self, **kwargs) -> 'InferenceResult':

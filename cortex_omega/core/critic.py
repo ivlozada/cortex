@@ -187,13 +187,13 @@ def garbage_collect(theory: RuleBase, threshold: float = 0.0, config: Optional[K
     # Threshold 0.0 means "Does more harm than good" (fires_neg > fires_pos - complexity penalty)
     
     lambda_val = config.lambda_complexity if config else 0.2
+    critic = Critic(config or KernelConfig())
     
     for rid, rule in list(theory.rules.items()):
         # Give new rules a grace period (support_count < 5)
         if rule.support_count < 5:
             continue
             
-        critic = Critic(config or KernelConfig())
         score = critic.score_mdl(rule)
         
         # If score is negative, the rule is actively harmful or too complex for its value

@@ -95,6 +95,24 @@ brain = Cortex(
 
 ---
 
+### 1. The "Killer Demo" (Project Prometheus)
+Simulates an insider threat scenario where an admin account is compromised. Cortex-Omega learns:
+*   **Baseline**: Users accessing secrets = Threat. Admins accessing secrets = Safe.
+*   **Attack Vector**: Anyone touching the 'honeypot_db' is a threat (overriding Admin status).
+*   **Result**: It catches the compromised admin in real-time.
+Run it: `python examples/10_killer_demo_prometheus.py`
+
+### 2. Project Cassandra (Social Virality Simulator)
+**New in v2.0.0**: Demonstrates the "Neuro-Symbolic Gap".
+*   **Phase 1 (Robust Learning)**: Learns noisy viral patterns (e.g., "Mega Influencers usually go viral") despite exceptions.
+*   **Phase 2 (Strict Enforcement)**: Injects a "Truth Axiom" (`NOT_is_viral :- fact_check(false)`) to suppress misinformation.
+*   **Result**: It correctly predicts viral hits while strictly banning false content, even from influencers.
+Run it: `python examples/11_project_cassandra.py`
+
+## 📦 Installations).
+
+---
+
 ## 🌟 Why Cortex?
 
 Modern AI has a fatal flaw: **Catastrophic Forgetting.** Neural Networks struggle to learn specific exceptions without unlearning general rules.
@@ -107,7 +125,11 @@ Cortex is different. It uses **Stochastic Logic Annealing** to crystallize truth
 *   **Glass-Box Explanations**: Every prediction comes with a logical proof trace.
 *   **Robustness to Noise**: Bayesian scoring filters out spurious correlations and confounders.
 *   **Clean Python API**: Designed for engineers, not just researchers.
+*   **Clean Python API**: Designed for engineers, not just researchers.
 *   **Scikit-Learn Integration**: Drop-in `CortexClassifier` for ML pipelines.
+*   **Pluggable Strategies**: Extensible architecture for adding new reasoning capabilities (see [`docs/strategies.md`](docs/strategies.md)).
+
+See [`docs/SPEC_kernel.md`](docs/SPEC_kernel.md) for the kernel specification.
 
 ---
 

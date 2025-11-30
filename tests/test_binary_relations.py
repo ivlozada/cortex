@@ -1,5 +1,6 @@
 import pytest
-from cortex_omega.core.engine import infer, update_theory_kernel, KernelConfig
+from cortex_omega.core.engine import infer, KernelConfig
+from cortex_omega.core.learner import Learner
 from cortex_omega.core.rules import RuleBase, Scene, FactBase, Literal, Rule
 
 def test_binary_negation_inference():
@@ -70,7 +71,8 @@ def test_binary_negation_learning():
     )
     
     # Update theory
-    theory, memory = update_theory_kernel(theory, scene, memory, axioms, config)
+    learner = Learner(config)
+    theory, memory = learner.learn(theory, scene, memory, axioms)
     
     # Check if we learned something useful (or at least didn't crash)
     # Since it's a False Negative (we predicted False? No, empty theory predicts False by default)
@@ -100,7 +102,7 @@ def test_binary_negation_learning():
     )
     
     # This should trigger a False Positive correction
-    theory, memory = update_theory_kernel(theory, scene2, memory, axioms, config)
+    theory, memory = learner.learn(theory, scene2, memory, axioms)
     
     # Verify that we learned a negative rule or exception
     # NOT_father(X, Y) :- age_diff(X, Y, small)

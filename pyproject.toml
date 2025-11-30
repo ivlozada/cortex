@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cortex-omega"
-dynamic = ["version"]
-description = "The Epistemic Inference Engine for Python. No prompts. Just logic."
+version = "2.0.0"
+description = "A Neuro-Symbolic AI Kernel for logical induction and rule learning. No prompts. Just logic."
 readme = "README.md"
 requires-python = ">=3.7"
 license = {text = "MIT"}

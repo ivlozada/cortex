@@ -5,7 +5,8 @@ import logging
 
 from .rules import RuleBase, Scene, Rule, Literal, RuleID
 from .config import KernelConfig
-from .hypothesis import HypothesisGenerator, Patch, FailureContext
+from .hypothesis import HypothesisGenerator
+from .types import Patch, FailureContext
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ def generate_structural_candidates(
     """
     patch_generator = config.patch_generator
     if patch_generator is None:
-        patch_generator = HypothesisGenerator()
+        patch_generator = HypothesisGenerator(config=config)
 
     culprit_rule = identify_culprit_rule(
         theory, 

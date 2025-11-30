@@ -36,7 +36,8 @@ class BenchmarkILP(unittest.TestCase):
     def test_benchmark_grandparent(self):
         """Learn Grandparent relation (Relational)."""
         from cortex_omega.core.rules import FactBase, Scene
-        from cortex_omega.core.engine import update_theory_kernel, KernelConfig
+        from cortex_omega.core.engine import KernelConfig
+        from cortex_omega.core.learner import Learner
         
         # Construct relational memory manually
         memory = []
@@ -69,8 +70,9 @@ class BenchmarkILP(unittest.TestCase):
         memory_buffer = []
         config = brain.config
         
+        learner = Learner(config)
         for s in memory:
-            theory, memory_buffer = update_theory_kernel(theory, s, memory_buffer, brain.axioms, config)
+            theory, memory_buffer = learner.learn(theory, s, memory_buffer, brain.axioms)
             
         brain.theory = theory
         end = time.time()

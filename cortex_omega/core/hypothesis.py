@@ -20,304 +20,17 @@ from collections import defaultdict
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Set, Tuple, Optional, Any, TYPE_CHECKING
-from .rules import Rule, Literal, FactBase, Scene, RuleBase, RuleID, Rule, Literal, parse_literal, Scene
+from typing import Dict, List, Set, Tuple, Optional, Any, TYPE_CHECKING
+from .rules import Rule, Literal, FactBase, Scene, RuleBase, RuleID, parse_literal
 from .inference import InferenceEngine
-from enum import Enum
+from .types import Patch, PatchOperation, FailureContext
+from .strategies import NumericThresholdStrategy, TemporalConstraintStrategy
 import copy
 
 logger = logging.getLogger(__name__)
 
 
-class PatchOperation(Enum):
-    """Operaciones de modificación de reglas."""
-    ADD_LITERAL = "ADD_LITERAL"           # Añadir condición positiva
-    ADD_NEGATED_LITERAL = "ADD_NEG"       # Añadir condición negativa
-    REMOVE_LITERAL = "REMOVE"             # Quitar condición
-    REPLACE_LITERAL = "REPLACE"           # Cambiar condición
-    ADD_EXCEPTION = "ADD_EXCEPTION"       # Añadir cláusula de excepción
-    CREATE_BRANCH = "CREATE_BRANCH"       # Crear regla alternativa (disyunción)
-    CREATE_CONCEPT = "CREATE_CONCEPT"     # Crear concepto intermedio reutilizable
-    SEQUENCE = "SEQUENCE"                 # Secuencia de parches
-
-
-@dataclass
-class Patch:
-    """Un parche propuesto para una regla."""
-    operation: PatchOperation
-    target_rule_id: str
-    details: Dict[str, Any]
-    confidence: float = 0.5
-    explanation: str = ""
-    
-    def __repr__(self):
-        return f"Patch({self.operation.value}, conf={self.confidence:.2f}): {self.explanation}"
-
-
-@dataclass
-class FailureContext:
-    """Contexto completo de un fallo de predicción."""
-    rule: Rule
-    error_type: str  # FALSE_POSITIVE o FALSE_NEGATIVE
-    target_entity: str
-    scene_facts: FactBase
-    prediction: bool
-    ground_truth: bool
-    target_predicate: str = "" # Added for Anti-Unification
-    target_args: Optional[Tuple[str, ...]] = None # Added for Binary Relations
-    inference_trace: List[Dict] = field(default_factory=list)
-    memory: List[Scene] = field(default_factory=list)
-    
-    # CORTEX-OMEGA v1.5: Feature Priors
-    feature_priors: Dict[str, float] = field(default_factory=dict)
-
-
-class DiscriminativeFeatureSelector:
-    """
-    CORTEX-OMEGA Optimization: Noise Convergence.
-    Selects features that correlate with the target predicate in memory.
-    Uses a simplified Information Gain / Correlation metric.
-    """
-    def __init__(self, min_score: float = 0.01):
-        self.min_score = min_score
-
-    def select_features(self, ctx: FailureContext) -> List[str]:
-        """
-        Returns a list of predicates that are relevant.
-        """
-        if not ctx.memory:
-            return [] # No memory, assume everything is relevant (or nothing?)
-            
-        # 1. Collect statistics
-        # We want to know P(Target | Feature) vs P(Target)
-        # Or simpler: Correlation between Feature Presence/Value and Target Truth.
-        
-        # Structure: feature_key -> {target_true: count, target_false: count}
-        # feature_key = (predicate, value) or just predicate?
-        # Let's use (predicate, value) for precise correlation.
-        
-        stats = {} 
-        total_pos = 0
-        total_neg = 0
-        
-        # CORTEX-OMEGA v1.4: Confounder Invariance
-        # We need to check if feature correlation is stable across time/splits.
-        relevant_scenes = [s for s in ctx.memory if s.ground_truth is not None]
-        
-        if not relevant_scenes:
-            return []
-            
-        for s in relevant_scenes:
-            is_positive = s.ground_truth
-            if is_positive:
-                total_pos += 1
-            else:
-                total_neg += 1
-                
-            for pred, args_set in s.facts.facts.items():
-                for args in args_set:
-                    # Handle unary/binary/n-ary
-                    # For unary: args=(entity,) -> val=True (implicitly)
-                    # For binary: args=(entity, val) -> val=val
-                    if len(args) == 1:
-                        val = "true" # Unary predicate presence
-                    else:
-                        val = str(args[1]) # Value
-                        
-                    key = (pred, val)
-                    if key not in stats:
-                        stats[key] = {"pos": 0, "neg": 0}
-                        
-                    if is_positive:
-                        stats[key]["pos"] += 1
-                    else:
-                        stats[key]["neg"] += 1
-                            
-        # 2. Calculate Scores
-        # Score = |P(Pos|Feature) - P(Pos)|
-        # Base probability
-        p_pos_base = total_pos / (total_pos + total_neg) if (total_pos + total_neg) > 0 else 0.5
-        
-        scores = {} # predicate -> max_score (we care if the predicate is useful)
-        
-        for (pred, val), counts in sorted(stats.items()):
-            n_feat = counts["pos"] + counts["neg"]
-            if n_feat < 3: continue # Ignore rare features (noise)
-            
-            p_pos_feat = counts["pos"] / n_feat
-            
-            # Information Gain-ish: How much does knowing this feature change probability?
-            impact = abs(p_pos_feat - p_pos_base)
-            
-            # Weight by support? A feature that appears once is noisy.
-            # Support weight: n_feat / total_samples
-            support = n_feat / len(relevant_scenes)
-            
-            # Final Score
-            score = impact * support
-            
-            # CORTEX-OMEGA v1.5: Feature Priors
-            if pred in ctx.feature_priors:
-                score *= ctx.feature_priors[pred]
-            
-            # CORTEX-OMEGA v1.4: Confounder Invariance (Stability Check)
-            # Split memory into Early/Late to detect drift.
-            # If feature correlation flips or drops, it's likely a confounder.
-            if len(relevant_scenes) >= 10:
-                mid = len(relevant_scenes) // 2
-                early_scenes = relevant_scenes[:mid]
-                late_scenes = relevant_scenes[mid:]
-                
-                def get_local_impact(scenes):
-                    l_pos = 0
-                    l_feat_pos = 0
-                    l_feat_total = 0
-                    for s in scenes:
-                        if s.ground_truth: l_pos += 1
-                        ent = s.target_entity
-                        has_feat = False
-                        for p, args_set in s.facts.facts.items():
-                            if p == pred:
-                                for args in args_set:
-                                    # Check value match
-                                    v = "true"
-                                    if len(args) > 1: v = str(args[1])
-                                    if v == val:
-                                        has_feat = True
-                                        break
-                            if has_feat: break
-                        
-                        if has_feat:
-                            l_feat_total += 1
-                            if s.ground_truth: l_feat_pos += 1
-                            
-                    if l_feat_total == 0: return 0.0
-                    l_base = l_pos / len(scenes) if scenes else 0.5
-                    l_prob = l_feat_pos / l_feat_total
-                    return abs(l_prob - l_base)
-
-                impact_early = get_local_impact(early_scenes)
-                impact_late = get_local_impact(late_scenes)
-                
-                # Stability penalty: if impact drops significantly, penalize
-                stability = 1.0
-                if impact_early > 0.1 and impact_late < 0.05:
-                    stability = 0.2 # Penalize unstable features
-                
-                score *= stability
-                # logger.debug(f"Feature {pred}={val} Stability={stability:.2f} (Early={impact_early:.2f}, Late={impact_late:.2f})")
-            
-            if pred not in scores:
-                scores[pred] = 0.0
-            scores[pred] = max(scores[pred], score)
-            
-        # 3. Filter
-        selected = [pred for pred, score in scores.items() if score > self.min_score]
-        
-        # Always include relational predicates?
-        # selected.extend(["left_of", "behind", "above", "below"])
-        
-        if selected:
-            # Sort by score for debug
-            selected.sort(key=lambda p: scores[p], reverse=True)
-            logger.debug(f"CORTEX: Feature Selector prioritized {selected[:5]} (Top Score={scores[selected[0]]:.2f}).")
-            
-        return selected
-
-    def select_numeric_splits(self, ctx: FailureContext) -> List[Tuple[str, str, float, float]]:
-        """
-        CORTEX-OMEGA v1.4: Numeric Threshold Learning.
-        Scans memory for numeric features and finds best splits.
-        Returns list of (predicate, operator, threshold, score).
-        """
-        if not ctx.memory:
-            return []
-            
-        splits = []
-        
-        # 1. Collect numeric values and labels
-        # predicate -> list of (value, is_positive)
-        numeric_data = {}
-        
-        relevant_scenes = [s for s in ctx.memory if s.target_predicate == ctx.target_predicate]
-        if not relevant_scenes:
-            return []
-            
-        total_pos = sum(1 for s in relevant_scenes if s.ground_truth)
-        total_neg = len(relevant_scenes) - total_pos
-        p_pos_base = total_pos / len(relevant_scenes) if len(relevant_scenes) > 0 else 0.5
-        
-        for scene in relevant_scenes:
-            is_positive = scene.ground_truth
-            ent = scene.target_entity
-            
-            for pred, args_set in scene.facts.facts.items():
-                for args in args_set:
-                    if len(args) == 2 and args[0] == ent:
-                        val_str = args[1]
-                        try:
-                            val = float(val_str)
-                            if pred not in numeric_data:
-                                numeric_data[pred] = []
-                            numeric_data[pred].append((val, is_positive))
-                        except ValueError:
-                            continue # Not numeric
-                            
-        # 2. Find best split for each predicate
-        for pred, data in numeric_data.items():
-            # Sort by value
-            data.sort(key=lambda x: x[0])
-            
-            best_score = -1.0
-            best_split = None
-            if len(data) < 5: continue # Need enough data
-            
-            data.sort(key=lambda x: x[0])
-            
-            best_score = 0.0
-            best_split = None
-            
-            # Try all midpoints
-            for i in range(len(data) - 1):
-                if data[i][0] == data[i+1][0]: continue # Skip duplicate values
-                
-                threshold = (data[i][0] + data[i+1][0]) / 2.0
-                
-                # Calculate stats for > Threshold
-                # (We can optimize this, but O(N^2) is fine for small memory)
-                greater_pos = 0
-                greater_total = 0
-                
-                for val, is_pos in data:
-                    if val > threshold:
-                        greater_total += 1
-                        if is_pos:
-                            greater_pos += 1
-                            
-                if greater_total == 0 or greater_total == len(data): continue
-                
-                p_pos_gt = greater_pos / greater_total
-                impact_gt = abs(p_pos_gt - p_pos_base)
-                support_gt = greater_total / len(data)
-                score_gt = impact_gt * support_gt
-                
-                # Calculate stats for <= Threshold (Complement)
-                less_pos = total_pos - greater_pos
-                less_total = len(data) - greater_total
-                p_pos_le = less_pos / less_total
-                impact_le = abs(p_pos_le - p_pos_base)
-                support_le = less_total / len(data)
-                score_le = impact_le * support_le
-                
-                # Pick the direction that has higher impact
-                if score_gt > best_score and score_gt > self.min_score:
-                    best_score = score_gt
-                    best_split = (pred, ">", threshold, score_gt)
-            if best_split:
-                splits.append(best_split)
-                
-        # Sort by score
-        splits.sort(key=lambda x: x[3], reverse=True)
-        return splits
+from .selectors import DiscriminativeFeatureSelector
 class FeatureExtractor:
     """
     Extrae features estructurales del contexto de fallo.
@@ -343,6 +56,10 @@ class FeatureExtractor:
         
         # Propiedades del target
         for pred, args_set in ctx.scene_facts.facts.items():
+            # CORTEX-OMEGA: Prevent Data Leakage
+            if pred == ctx.target_predicate or pred == f"NOT_{ctx.target_predicate}":
+                continue
+                
             # Filter noise if we have enough data to know better
             if relevant_predicates and pred not in relevant_predicates:
                  # Keep core relations or if list is empty
@@ -381,11 +98,10 @@ class FeatureExtractor:
         
         # Predicados usados en la regla vs disponibles
         rule_predicates = {lit.predicate for lit in ctx.rule.body}
-        available_predicates = ctx.scene_facts.get_all_predicates()
-        features["unused_predicates"] = available_predicates - rule_predicates - {"glows"}
-        
         # Propiedades de entidades relacionadas
         features["related_properties"] = {}
+        target_entity = ctx.target_entity
+        # print(f"DEBUG: Extracting features for {target_entity}. Facts: {ctx.scene_facts.facts.keys()}")
         for rel_entity in features["related_entities"]:
             features["related_properties"][rel_entity] = {}
             for pred, args_set in ctx.scene_facts.facts.items():
@@ -404,23 +120,14 @@ class HeuristicGenerator:
     
     # Prioridad de propiedades para excepciones (mayor = más relevante)
     # CORTEX-OMEGA: Standardized to Higher Value = Higher Priority
-    PROPERTY_PRIORITY = {
-        "material": 10.0,
-        "is_heavy": 10.0,
-        "heavy": 10.0,
-        "structure": 8.0,
-        "density": 8.0,
-        "type": 8.0,
-        "shape": 7.0,     # Shape is robust (High Priority)
-        "size": 6.0,
-        "color": 2.0,     # Color is often noise (Low Priority)
-        "location": 1.0,  # Location is often noise (Lowest Priority)
-    }
+    # DEPRECATED: Use config.hyperparams.feature_weights instead
+    # PROPERTY_PRIORITY = { ... }
     
-    def __init__(self, embedding_model=None):
+    def __init__(self, config: 'KernelConfig', embedding_model=None):
+        self.config = config
         self.embedding_model = embedding_model
         self.strategies = [
-            self._strategy_add_temporal_constraint, # CORTEX-OMEGA v1.4: Highest Priority (Temporal Logic)
+            TemporalConstraintStrategy(config), # CORTEX-OMEGA v1.4: Highest Priority (Temporal Logic)
             self._strategy_add_property_filter,
             self._strategy_add_negation,
             self._strategy_add_relational_constraint,
@@ -431,155 +138,13 @@ class HeuristicGenerator:
             self._strategy_relational_anti_unification,
             self._strategy_contrastive_refinement, # NUEVO: Refinamiento contrastivo
             self._strategy_create_negative_rule,   # NUEVO: Explicit Negation
-            self._strategy_add_numeric_threshold,  # CORTEX-OMEGA v1.4: Numeric Thresholds
+            NumericThresholdStrategy(config),  # CORTEX-OMEGA v1.4: Numeric Thresholds
         ]
         
         # CORTEX-OMEGA: Meta-Cognition
         self.success_history = {} # strategy_name -> success_count
 
-    def _strategy_add_numeric_threshold(self, ctx: FailureContext, features: Dict[str, Any]) -> List[Patch]:
-        """
-        Estrategia: Añadir umbral numérico.
-        Para FALSE_NEGATIVE: añadir condición V > T o V <= T.
-        """
-        patches = []
-        if ctx.error_type != "FALSE_NEGATIVE":
-            return []
-            
-        # Use selector to find splits
-        selector = DiscriminativeFeatureSelector(min_score=0.1)
-        splits = selector.select_numeric_splits(ctx)
-        
-        for pred, op, threshold, score in splits[:3]: # Top 3 splits
-            # Construct patch
-            # We need to bind the variable first: pred(X, V)
-            # Then add constraint: V op Threshold
-            
-            # Check if pred(X, V) is already in body?
-            # If not, add it.
-            
-            # For now, assume we add both: pred(X, V), V > T
-            # But if pred(X, V) is already there, we just add V > T?
-            # That requires matching variables.
-            
-            # Simplified approach: Add "pred(X, V), V > T"
-            # Engine handles variable reuse if names match?
-            # No, we need to ensure V is unique or reused correctly.
-            
-            # Let's use a unique variable name based on predicate
-            var_name = f"V_{pred}"
-            
-            patch = Patch(
-                operation=PatchOperation.ADD_LITERAL,
-                target_rule_id=str(ctx.rule.id),
-                details={
-                    "add_body": [
-                        f"{pred}(X, {var_name})",
-                        f"{op}({var_name}, {threshold})"
-                    ]
-                },
-                confidence=score * 1.2, # Boost confidence to prioritize numeric splits over generic variables
-                explanation=f"Requiere {pred} {op} {threshold:.2f}"
-            )
-            patches.append(patch)
-            
-        return patches
 
-    def _strategy_add_temporal_constraint(self, ctx: FailureContext, features: Dict[str, Any]) -> List[Patch]:
-        """
-        CORTEX-OMEGA v1.4: Temporal Sequence Learning.
-        If a rule fires on a negative example (False Positive), try to add a temporal constraint
-        (T2 > T1) that holds for positives but fails for this negative.
-        """
-        patches = []
-        if ctx.error_type != "FALSE_POSITIVE":
-            return []
-            
-        # 1. Find all variables in the rule body
-        variables = set()
-        for lit in ctx.rule.body:
-            for arg in lit.args:
-                if isinstance(arg, str) and arg and arg[0].isupper():
-                    variables.add(arg)
-                    
-        if len(variables) < 2:
-            return []
-            
-        # 2. Get bindings for the current negative firing
-        from .engine import InferenceEngine
-        from .rules import RuleBase
-        engine = InferenceEngine(ctx.scene_facts, RuleBase())
-        bindings_list = engine.evaluate_body(ctx.rule.body)
-        
-        if not bindings_list:
-            return []
-            
-        # Check each grounding (usually just one for specific counter-example)
-        for bindings in bindings_list:
-            # Identify numeric values (timestamps)
-            numeric_vars = []
-            for var, val in bindings.items():
-                try:
-                    float(val)
-                    numeric_vars.append((var, float(val)))
-                except ValueError:
-                    continue
-            
-            if len(numeric_vars) < 2:
-                continue
-                
-            # Try all pairs
-            for v1, val1 in numeric_vars:
-                for v2, val2 in numeric_vars:
-                    if v1 == v2: continue
-                    
-                    # We want a constraint that FAILS here (to kill the FP).
-                    # So if we propose v1 > v2, it must be that val1 <= val2 currently.
-                    if val1 <= val2:
-                        # Potential constraint: v1 > v2
-                        # Check if this holds for POSITIVES in memory.
-                        
-                        consistent_with_positives = True
-                        if ctx.memory:
-                            for s in ctx.memory:
-                                if not s.ground_truth: continue
-                                if s.target_predicate != ctx.target_predicate: continue
-                                
-                                # Find bindings for s
-                                matcher_pos = InferenceEngine(s.facts, None)
-                                pos_bindings_list = matcher_pos.evaluate_body(ctx.rule.body)
-                                if not pos_bindings_list: continue 
-                                
-                                # Check if v1 > v2 holds for at least one grounding in this positive
-                                satisfied_in_s = False
-
-                                for pb in pos_bindings_list:
-                                    try:
-                                        pval1 = float(pb.get(v1, "0"))
-                                        pval2 = float(pb.get(v2, "0"))
-                                        if pval1 > pval2:
-                                            satisfied_in_s = True
-                                            break
-                                    except:
-                                        pass
-                                
-                                if not satisfied_in_s:
-                                    consistent_with_positives = False
-                                    break
-                        
-                        if consistent_with_positives:
-                            # Found a valid temporal constraint!
-                            patch = Patch(
-                                operation=PatchOperation.ADD_LITERAL,
-                                target_rule_id=str(ctx.rule.id),
-                                details={
-                                    "add_body": [f">({v1}, {v2})"]
-                                },
-                                confidence=0.9
-                            )
-                            patches.append(patch)
-                            
-        return patches
 
     def _strategy_contrastive_refinement(self, ctx: FailureContext, features: Dict[str, Any]) -> List[Patch]:
         """
@@ -677,12 +242,21 @@ class HeuristicGenerator:
         if 'cortex_priorities' in features:
             priority_names = features['cortex_priorities']
             # Sort strategies: those in priority_names come first, in order.
-            strategies.sort(key=lambda s: priority_names.index(s.__name__) if s.__name__ in priority_names else 999)
+            def get_strat_name(s):
+                return s.__name__ if hasattr(s, '__name__') else s.name
+            strategies.sort(key=lambda s: priority_names.index(get_strat_name(s)) if get_strat_name(s) in priority_names else 999)
             
         for strategy in strategies:
-            patches = strategy(context, features)
+            if hasattr(strategy, 'propose'):
+                # New Strategy Class
+                patches = strategy.propose(context, features)
+            else:
+                # Legacy Method
+                patches = strategy(context, features)
+                
             for p in patches:
-                p.source_strategy = strategy.__name__
+                if not p.source_strategy:
+                    p.source_strategy = strategy.__name__ if hasattr(strategy, '__name__') else strategy.name
             candidates.extend(patches)
         
         # Ordenar por confianza
@@ -708,7 +282,7 @@ class HeuristicGenerator:
                 # Si es valorada, es pred(X, val).
                 
                 # CORTEX-OMEGA v1.3: Apply Causal Priors
-                priority = self.PROPERTY_PRIORITY.get(pred, 1.0)
+                priority = self.config.hyperparams.feature_weights.get(pred, 1.0)
                 base_conf = 0.7 * priority
                 
                 # Penalize low confidence patches to avoid clutter
@@ -749,7 +323,7 @@ class HeuristicGenerator:
             for pred, value in features["target_properties"].items():
                 
                 # CORTEX-OMEGA v1.3: Apply Causal Priors
-                priority = self.PROPERTY_PRIORITY.get(pred, 1.0)
+                priority = self.config.hyperparams.feature_weights.get(pred, 1.0)
                 base_conf = 0.6 * priority
                 
                 if base_conf < 0.3:
@@ -793,7 +367,7 @@ class HeuristicGenerator:
                 # ORDENAR por prioridad (material > size > shape > color)
                 sorted_props = sorted(
                     rel_props.items(),
-                    key=lambda x: self.PROPERTY_PRIORITY.get(x[0], 99)
+                    key=lambda x: self.config.hyperparams.feature_weights.get(x[0], 99)
                 )
                 
                 for i, (prop, value) in enumerate(sorted_props):
@@ -935,7 +509,7 @@ class HeuristicGenerator:
         # Priorizar por propiedades más distintivas (Higher Priority First)
         sorted_props = sorted(
             target_props.items(),
-            key=lambda x: self.PROPERTY_PRIORITY.get(x[0], 0.0),
+            key=lambda x: self.config.hyperparams.feature_weights.get(x[0], 0.0),
             reverse=True
         )
         
@@ -1296,7 +870,7 @@ class HeuristicGenerator:
         # Priorizar propiedades distintivas
         sorted_props = sorted(
             target_props.items(),
-            key=lambda x: self.PROPERTY_PRIORITY.get(x[0], 99)
+            key=lambda x: self.config.hyperparams.feature_weights.get(x[0], 99)
         )
         
         for prop, value in sorted_props[:3]:
@@ -1714,9 +1288,10 @@ class HypothesisGenerator:
     Orquesta extracción de features, generación de candidatos y aplicación.
     """
     
-    def __init__(self, neural_ranker=None, disable_motifs=False, disable_concept_invention=False, search_strategy="beam", embedding_model=None, lambda_complexity=0.3):
+    def __init__(self, config: 'KernelConfig', neural_ranker=None, disable_motifs=False, disable_concept_invention=False, search_strategy="beam", embedding_model=None, lambda_complexity=0.3):
+        self.config = config
         self.feature_extractor = FeatureExtractor()
-        self.heuristic_generator = HeuristicGenerator(embedding_model=embedding_model)
+        self.heuristic_generator = HeuristicGenerator(config=config, embedding_model=embedding_model)
         
         # ABLATION: Disable Concept Invention
         if disable_concept_invention:
@@ -2032,7 +1607,9 @@ if __name__ == "__main__":
     print(facts)
     
     # Generar hipótesis
-    h_phi = HypothesisGenerator()
+    from .config import KernelConfig
+    config = KernelConfig()
+    h_phi = HypothesisGenerator(config=config)
     
     diagnosis = h_phi.diagnose(ctx)
     print(f"\n=== Diagnóstico ===")

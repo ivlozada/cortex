@@ -12,7 +12,7 @@ class TestProperties(unittest.TestCase):
         """
         data = []
         # Generate synthetic data: target = (A=1 AND B=1)
-        for _ in range(50):
+        for _ in range(200):
             a = random.choice(["0", "1"])
             b = random.choice(["0", "1"])
             target = "true" if a == "1" and b == "1" else "false"

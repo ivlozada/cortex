@@ -20,20 +20,7 @@ logger = logging.getLogger(__name__)
 # 1. Operador de actualización
 # =========================
 
-def update_theory_kernel(
-    theory: RuleBase,
-    scene: Scene,
-    memory: List[Scene],
-    axioms: ValueBase,
-    config: KernelConfig,
-) -> Tuple[RuleBase, List[Scene]]:
-    """
-    El corazón del algoritmo.
-    Entrada: teoría actual, nueva escena, memoria, axiomas y configuración.
-    Salida: nueva teoría, nueva memoria.
-    """
-    learner = Learner(config)
-    return learner.learn(theory, scene, memory, axioms)
+
 
 
 class KnowledgeCompiler:

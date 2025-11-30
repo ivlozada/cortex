@@ -7,7 +7,7 @@ from .values import ValueBase
 from .config import KernelConfig
 from .theorist import Theorist
 from .critic import Critic
-from .hypothesis import FailureContext
+from .types import FailureContext
 from .inference import infer, update_rule_stats, InferenceEngine
 from .critic import Critic, garbage_collect, calculate_attribute_entropy, clone_factbase
 
@@ -102,7 +102,7 @@ class Learner:
         if patch_generator is None:
             # Avoid circular import or instantiate default
             from .hypothesis import HypothesisGenerator
-            patch_generator = HypothesisGenerator()
+            patch_generator = HypothesisGenerator(config=self.config)
             
         theorist = Theorist(config=self.config, hypothesis_generator=patch_generator)
         return theorist.propose(theory, scene, memory, trace, error_type)

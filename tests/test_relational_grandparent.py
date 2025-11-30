@@ -92,14 +92,16 @@ class TestRelationalGrandparent(unittest.TestCase):
         memory.append(s3)
         
         # Train
-        from cortex_omega.core.engine import update_theory_kernel, KernelConfig
+        from cortex_omega.core.engine import KernelConfig
+        from cortex_omega.core.learner import Learner
         
         theory = brain.theory
         memory_buffer = []
         config = KernelConfig()
         
+        learner = Learner(config)
         for s in memory:
-            theory, memory_buffer = update_theory_kernel(theory, s, memory_buffer, brain.axioms, config)
+            theory, memory_buffer = learner.learn(theory, s, memory_buffer, brain.axioms)
             
         brain.theory = theory
         brain.memory = memory_buffer

@@ -3,6 +3,10 @@ import unittest
 from cortex_omega.core.rules import Rule, Literal, RuleBase, FactBase, Scene
 from cortex_omega.core.hypothesis import HypothesisGenerator, FailureContext
 from cortex_omega.core.engine import infer
+from cortex_omega.core.config import KernelConfig
+
+import logging
+logging.basicConfig(level=logging.DEBUG)
 
 class TestNumericThresholds(unittest.TestCase):
     def test_numeric_split_discovery(self):
@@ -62,8 +66,9 @@ class TestNumericThresholds(unittest.TestCase):
         )
         
         # 3. Run Generator
-        generator = HypothesisGenerator()
-        candidates = generator.generate(ctx, top_k=5, beam_width=1)
+        config = KernelConfig()
+        generator = HypothesisGenerator(config=config)
+        candidates = generator.generate(ctx, top_k=10, beam_width=10)
         
         # 4. Verify Candidates
         found_threshold = False

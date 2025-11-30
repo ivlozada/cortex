@@ -11,10 +11,11 @@ Scenario:
 """
 
 from cortex_omega.api.client import Cortex
+from cortex_omega.core.errors import EpistemicVoidError
 
 def main():
     # 1. Initialize
-    cortex = Cortex(workspace="./temp_workspace_02")
+    cortex = Cortex()
     print("🧠 Cortex Initialized.")
 
     # 2. Teach
@@ -109,7 +110,7 @@ def main():
     ]
     
     print("📚 Absorbing family tree and examples...")
-    cortex.absorb(examples, target_label="is_grandparent")
+    cortex.absorb_memory(examples, target_label="is_grandparent")
     
     # 3. Query
     print("\n🔮 Predictions:")
@@ -121,10 +122,13 @@ def main():
     cortex.facts.add("parent", ("grampa_smurf", "papa_smurf"))
     cortex.facts.add("parent", ("papa_smurf", "smurfette"))
     
-    result = cortex.query(id="grampa_smurf", target="is_grandparent")
-    print(f"  Grampa Smurf: {result.prediction}")
-    if result.explanation:
-        print(f"    Reason: {result.explanation}")
+    try:
+        result = cortex.query(id="grampa_smurf", target="is_grandparent")
+        print(f"  Grampa Smurf: {result.prediction}")
+        if result.explanation:
+            print(f"    Reason: {result.explanation}")
+    except EpistemicVoidError:
+        print("  Grampa Smurf: Unknown (Epistemic Void)")
 
     print("\n📜 Learned Rules:")
     for rule in cortex.export_rules():

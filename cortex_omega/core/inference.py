@@ -557,39 +557,5 @@ def update_rule_stats(theory: RuleBase, trace: List[Dict[str, Any]], is_correct:
                     
                 updated.add(rid)
 
-def reward_rules(theory: RuleBase, trace: List[Dict[str, Any]], target_predicate: str, ground_truth: bool, reward: float = 0.1):
-    """
-    CORTEX-OMEGA v1.3: Bayesian Reward.
-    Updates support counts and recalculates confidence.
-    Only rewards rules that derived facts consistent with the final outcome.
-    """
-    rewarded = set()
-    
-    for step in trace:
-        if step["type"] == "derivation":
-            rid = step["rule_id"]
-            derived_lit = step["derived"]
-            pred_name = derived_lit.predicate
-            is_negated = derived_lit.negated
-            
-            should_reward = False
-            
-            # CORTEX-OMEGA v1.6: Reward ALL rules in the trace if the outcome was correct.
-            # This ensures auxiliary rules (exceptions, concepts) get credit.
-            should_reward = True
-            
-            if should_reward:
-                if rid in theory.rules and rid not in rewarded:
-                    rule = theory.rules[rid]
-                    rule.support_count += 1
-                    # rule.fires_pos is now handled in update_rule_stats
-                    
-                    # Bayesian Update
-                    s = rule.support_count
-                    f = rule.failure_count
-                    
-                    # New Confidence
-                    rule.confidence = (s + 1.0) / (s + f + 2.0)
-                    
-                    rewarded.add(rid)
+
 

@@ -35,30 +35,34 @@ The kernel produces the following outputs via `explain()` or `fit()` return:
 
 ## 2. The Sacred API
 
-The following methods constitute the stable public interface of the kernel.
+The core logic is encapsulated in the `Learner` class (formerly `GDMKernel`).
 
 ```python
-class GDMKernel:
-    def fit(self, scenes: List[Scene], target_predicate: str, config: Optional[KernelConfig] = None) -> 'GDMKernel':
+class Learner:
+    def __init__(self, config: KernelConfig):
         """
-        Trains the kernel on the provided scenes.
-        Returns self for chaining.
-        """
-        pass
-
-    def predict(self, scenes: List[Scene]) -> List[bool]:
-        """
-        Infers the target predicate for a list of scenes.
-        Returns a list of booleans (True/False).
+        Initializes the Learner with a frozen configuration.
         """
         pass
 
-    def explain(self) -> Dict[str, Any]:
+    def learn(self, 
+              theory: RuleBase, 
+              scene: Scene, 
+              memory: List[Scene], 
+              axioms: ValueBase) -> Tuple[RuleBase, List[Scene]]:
         """
-        Returns the internal theory in a structured format.
+        Updates the theory based on a new scene.
+        Returns the updated theory and memory.
         """
         pass
 ```
+
+### 2.1 Strategy Pattern
+The `Learner` delegates hypothesis generation to `HypothesisGenerator`, which uses a set of pluggable `RepairStrategy` implementations:
+*   `NumericThresholdStrategy`: Finds split points in continuous variables (e.g., `age > 18`).
+*   `TemporalConstraintStrategy`: Discovers temporal relationships (e.g., `event_A before event_B`).
+*   `DiscriminativeFeatureSelector`: Selects features that distinguish positive/negative examples.
+
 
 ---
 

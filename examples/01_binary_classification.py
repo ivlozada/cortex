@@ -13,8 +13,7 @@ from cortex_omega.api.client import Cortex
 
 def main():
     # 1. Initialize Cortex
-    # We use a temporary workspace for this example.
-    cortex = Cortex(workspace="./temp_workspace_01")
+    cortex = Cortex()
     
     print("🧠 Cortex Initialized.")
 
@@ -28,7 +27,7 @@ def main():
     ]
     
     print(f"📚 Absorbing {len(training_data)} training examples...")
-    cortex.absorb(training_data, target_label="hazardous")
+    cortex.absorb_memory(training_data, target_label="hazardous")
     
     # 3. Query (Inference)
     # Now we ask about new objects.

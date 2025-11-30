@@ -1,6 +1,7 @@
 import unittest
 from cortex_omega.core.rules import Rule, Literal, FactBase, Scene, RuleID
 from cortex_omega.core.hypothesis import HeuristicGenerator, FailureContext, PatchOperation
+from cortex_omega.core.config import KernelConfig
 
 class TestAntiUnification(unittest.TestCase):
     def test_relational_anti_unification(self):
@@ -31,7 +32,8 @@ class TestAntiUnification(unittest.TestCase):
         )
         
         # 3. Run Strategy
-        gen = HeuristicGenerator()
+        config = KernelConfig()
+        gen = HeuristicGenerator(config)
         patches = gen._strategy_relational_anti_unification(ctx, features={})
         
         # 4. Verify

@@ -42,3 +42,36 @@ class KernelConfig:
     
     # Debug Mode
     debug: bool = False
+    
+    # CORTEX-OMEGA v2.0: Centralized Hyperparameters
+    hyperparams: 'Hyperparameters' = field(default_factory=lambda: Hyperparameters())
+    
+    def __post_init__(self):
+        if self.feature_priors:
+            self.hyperparams.feature_weights.update(self.feature_priors)
+
+@dataclass
+class Hyperparameters:
+    """
+    Centralized hyperparameters for the engine.
+    Replaces magic numbers in hypothesis generation and inference.
+    """
+    # Hypothesis Generation
+    temporal_confidence_threshold: float = 0.9
+    relational_confidence_threshold: float = 0.55
+    min_rule_score: float = 0.01
+    
+    # Feature Priorities (formerly PROPERTY_PRIORITY)
+    feature_weights: Dict[str, float] = field(default_factory=lambda: {
+        "material": 10.0,
+        "shape": 5.0,
+        "color": 2.0,
+        "size": 2.0,
+        "texture": 2.0
+    })
+    
+    # Inference & Learning
+    strict_mode_penalty: int = 1_000_000
+    default_failure_penalty: int = 1
+    bayesian_alpha: float = 1.0
+    bayesian_beta: float = 2.0

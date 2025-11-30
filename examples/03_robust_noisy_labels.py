@@ -13,8 +13,8 @@ Scenario:
 from cortex_omega.api.client import Cortex
 
 def main():
-    # 1. Initialize with "Robust" mode
-    cortex = Cortex(workspace="./temp_workspace_03", mode="robust")
+    # 1. Initialize
+    cortex = Cortex(mode="robust")
     print("🧠 Cortex Initialized (Robust Mode).")
 
     # 2. Teach
@@ -38,8 +38,8 @@ def main():
         {"id": "obj6", "shape": "circle", "color": "blue", "target": False},
     ]
     
-    print(f"📚 Absorbing {len(training_data)} examples with noisy correlation...")
-    cortex.absorb(training_data, target_label="target")
+    print(f"📚 Absorbing {len(training_data)} noisy examples...")
+    cortex.absorb_memory(training_data, target_label="target")
     
     # 3. Query
     # We test with a "Blue Square" (Should be True) and a "Red Circle" (Should be False)

@@ -5,3 +5,4 @@ except ImportError:
     __version__ = "0.0.0-dev"
 
 from .api.client import Cortex
+from .core.errors import EpistemicVoidError

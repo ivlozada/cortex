@@ -9,6 +9,25 @@ from typing import Dict, List, Set, Tuple, Optional, Any
 from collections import defaultdict
 import copy
 import time
+import hashlib
+
+@dataclass(frozen=True)
+class RuleID:
+    uid: str
+    
+    def __str__(self):
+        return self.uid
+        
+    def __repr__(self):
+        return f"RuleID({self.uid})"
+        
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.uid == other
+        return isinstance(other, RuleID) and self.uid == other.uid
+        
+    def __hash__(self):
+        return hash(self.uid)
 
 
 @dataclass
@@ -43,7 +62,7 @@ class Literal:
 @dataclass
 class Rule:
     """Una regla lógica: head :- body1, body2, ..."""
-    id: str
+    id: RuleID
     head: Literal
     body: List[Literal]
     confidence: float = 1.0
@@ -105,10 +124,10 @@ class Rule:
             }
         }
 
-    def clone(self, new_id: str = None) -> 'Rule':
+    def clone(self, new_id: RuleID = None) -> 'Rule':
         """Copia profunda de la regla."""
         return Rule(
-            id=new_id or f"{self.id}_clone",
+            id=new_id or RuleID(f"{self.id.uid}_clone"),
             head=copy.deepcopy(self.head),
             body=copy.deepcopy(self.body),
             confidence=self.confidence,
@@ -226,8 +245,8 @@ class RuleBase:
     """Base de reglas: almacena y gestiona reglas lógicas."""
     
     def __init__(self):
-        self.rules: Dict[str, Rule] = {}
-        self.rules_by_head: Dict[str, List[str]] = defaultdict(list)
+        self.rules: Dict[RuleID, Rule] = {}
+        self.rules_by_head: Dict[str, List[RuleID]] = defaultdict(list)
         self.version = 0
     
     def add(self, rule: Rule):
@@ -238,7 +257,7 @@ class RuleBase:
         self.rules_by_head[rule.head.predicate].append(rule.id)
         self.version += 1
     
-    def remove(self, rule_id: str):
+    def remove(self, rule_id: RuleID):
         """Elimina una regla."""
         if rule_id in self.rules:
             rule = self.rules[rule_id]
@@ -246,7 +265,7 @@ class RuleBase:
             del self.rules[rule_id]
             self.version += 1
     
-    def replace(self, old_id: str, new_rule: Rule):
+    def replace(self, old_id: RuleID, new_rule: Rule):
         """Reemplaza una regla."""
         self.remove(old_id)
         self.add(new_rule)
@@ -255,7 +274,7 @@ class RuleBase:
         """Obtiene todas las reglas que derivan un predicado."""
         return [self.rules[rid] for rid in self.rules_by_head.get(predicate, [])]
     
-    def prune(self, threshold: float = 0.1) -> List[str]:
+    def prune(self, threshold: float = 0.1) -> List[RuleID]:
         """
         CORTEX-OMEGA: Elimina reglas con baja utilidad.
         Utility = usage_count * confidence.
@@ -330,6 +349,14 @@ def parse_literal(s: str) -> Literal:
         return Literal(s, (), negated)
 
 
+def make_rule_id(rule: Rule) -> RuleID:
+    """Generates a deterministic ID based on rule content."""
+    head_str = str(rule.head)
+    body_strs = sorted([str(b) for b in rule.body])
+    payload = f"{head_str} :- {', '.join(body_strs)}"
+    h = hashlib.sha1(payload.encode()).hexdigest()[:12]
+    return RuleID(uid=f"R_{h}")
+
 def parse_rule(s: str, rule_id: str = None) -> Rule:
     """Parsea una cadena como 'head :- body1, body2'."""
     parts = s.split(":-")
@@ -357,8 +384,12 @@ def parse_rule(s: str, rule_id: str = None) -> Rule:
         
         body = [parse_literal(bp) for bp in body_parts]
     
+    # Create temporary rule to generate ID if not provided
+    temp_rule = Rule(id=RuleID("temp"), head=head, body=body)
+    rid = RuleID(rule_id) if rule_id else make_rule_id(temp_rule)
+    
     return Rule(
-        id=rule_id or f"R{hash(s) % 10000}",
+        id=rid,
         head=head,
         body=body
     )

@@ -60,6 +60,28 @@ brain = Cortex()
 legal_brain = Cortex(mode="strict")
 ```
 
+#### Mode Comparison
+
+| Mode | Behavior | Use Case |
+| :--- | :--- | :--- |
+| **Robust** | Bayesian, noise-tolerant. Requires multiple counter-examples to override a rule. | Noisy tabular data, fraud detection, ops. |
+| **Strict** | Zero Tolerance. A single counter-example overrides a general rule (Kill Switch). | Policy enforcement, legal compliance, safety. |
+
+### 🔧 Advanced Config
+You can fine-tune the engine's cognitive biases:
+
+```python
+brain = Cortex(
+    mode="strict",
+    feature_priors={"material": 5.0},   # Prefer 'material' explanations over others
+    noise_model={"false_positive": 0.1} # Expect 10% sensor noise
+)
+```
+
+*   **`feature_priors`**: Guide the engine towards specific causal factors.
+*   **`noise_model`**: Adjust tolerance for false positives/negatives.
+*   **`sensitivity`**: Control the "imagination" (willingness to accept weak correlations).
+
 ---
 
 ## 🌟 Why Cortex?
@@ -78,7 +100,13 @@ Cortex is different. It uses **Stochastic Logic Annealing** to crystallize truth
 
 ---
 
-## 📚 Examples
+## 📚 Official Demos
+
+*   **[`examples/10_core_capabilities_demo.py`](examples/10_core_capabilities_demo.py)**: End-to-end tour of senior detection + confounder invariance.
+*   **[`tests/test_pattern_learning_golden.py`](tests/test_pattern_learning_golden.py)**: Golden test of "heavy things sink, except balsa".
+*   **[`examples/01_financial_fraud_detection.py`](examples/01_financial_fraud_detection.py)**: Small fraud pipeline with exceptions (VIP users).
+
+## 💡 Examples
 
 ### 1. Socrates (Logical Deduction)
 ```python

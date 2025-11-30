@@ -5,8 +5,11 @@ Axiomatic constraints that define "Goodness" for the agent.
 """
 
 from dataclasses import dataclass
-from typing import List, Dict, Set, Optional
+from typing import List, Dict, Set, Optional, TYPE_CHECKING
 from .rules import Literal, FactBase
+
+if TYPE_CHECKING:
+    from .rules import RuleBase, Scene
 
 @dataclass
 class Axiom:
@@ -86,7 +89,7 @@ class ValueBase:
             
         return None
 
-    def evaluate_theory(self, rule_base, test_scenes) -> float:
+    def evaluate_theory(self, rule_base: 'RuleBase', test_scenes: List['Scene']) -> float:
         """
         Evaluates the 'moral score' of a theory.
         1.0 = Saint

@@ -19,8 +19,8 @@ import random
 from collections import defaultdict
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Set, Tuple, Optional, Any
-from .rules import FactBase, RuleBase, Rule, Literal, parse_literal
+from typing import Dict, List, Set, Tuple, Optional, Any, TYPE_CHECKING
+from .rules import FactBase, RuleBase, Rule, Literal, parse_literal, Scene
 from .inference import InferenceEngine
 from enum import Enum
 import copy
@@ -65,7 +65,7 @@ class FailureContext:
     target_predicate: str = "" # Added for Anti-Unification
     target_args: Optional[Tuple[str, ...]] = None # Added for Binary Relations
     inference_trace: List[Dict] = field(default_factory=list)
-    memory: List[Any] = field(default_factory=list) # List[Scene] but avoiding circular import
+    memory: List[Scene] = field(default_factory=list)
     
     # CORTEX-OMEGA v1.5: Feature Priors
     feature_priors: Dict[str, float] = field(default_factory=dict)
@@ -430,7 +430,7 @@ class HeuristicGenerator:
         # CORTEX-OMEGA: Meta-Cognition
         self.success_history = {} # strategy_name -> success_count
 
-    def _strategy_add_numeric_threshold(self, ctx: FailureContext, features: Dict) -> List[Patch]:
+    def _strategy_add_numeric_threshold(self, ctx: FailureContext, features: Dict[str, Any]) -> List[Patch]:
         """
         Estrategia: Añadir umbral numérico.
         Para FALSE_NEGATIVE: añadir condición V > T o V <= T.
@@ -480,7 +480,7 @@ class HeuristicGenerator:
             
         return patches
 
-    def _strategy_add_temporal_constraint(self, ctx: FailureContext, features: Dict) -> List[Patch]:
+    def _strategy_add_temporal_constraint(self, ctx: FailureContext, features: Dict[str, Any]) -> List[Patch]:
         """
         CORTEX-OMEGA v1.4: Temporal Sequence Learning.
         If a rule fires on a negative example (False Positive), try to add a temporal constraint
@@ -575,7 +575,7 @@ class HeuristicGenerator:
                             
         return patches
 
-    def _strategy_contrastive_refinement(self, ctx: FailureContext, features: Dict) -> List[Patch]:
+    def _strategy_contrastive_refinement(self, ctx: FailureContext, features: Dict[str, Any]) -> List[Patch]:
         """
         Estrategia: Refinamiento Contrastivo.
         Para FALSE_POSITIVE: Buscar propiedades que tienen los positivos en memoria
@@ -699,7 +699,7 @@ class HeuristicGenerator:
         "size": 0.7
     }
 
-    def _strategy_add_property_filter(self, ctx: FailureContext, features: Dict) -> List[Patch]:
+    def _strategy_add_property_filter(self, ctx: FailureContext, features: Dict[str, Any]) -> List[Patch]:
         """
         Estrategia: Añadir filtro de propiedad.
         Para FALSE_POSITIVE: añadir condición que el target NO cumple.
@@ -781,7 +781,7 @@ class HeuristicGenerator:
     
         return patches
     
-    def _strategy_add_negation(self, ctx: FailureContext, features: Dict) -> List[Patch]:
+    def _strategy_add_negation(self, ctx: FailureContext, features: Dict[str, Any]) -> List[Patch]:
         """
         Estrategia: Añadir negación de relación.
         Especialmente útil para excepciones tipo "...UNLESS..."

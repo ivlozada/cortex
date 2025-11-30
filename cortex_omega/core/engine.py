@@ -7,6 +7,9 @@ from .rules import RuleBase, Rule, Literal, FactBase, Scene
 from .inference import InferenceEngine
 from .values import ValueBase, Axiom
 from .hypothesis import HypothesisGenerator, FailureContext
+from .config import KernelConfig
+from .critic import Critic, clone_factbase
+from .learner import Learner
 
 import copy
 import logging
@@ -14,30 +17,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class KernelConfig:
-    """
-    Configuración y dependencias del kernel.
-    Es 'estado externo' que controla cómo propone parches y cómo evalúa armonía.
-    """
-    lambda_complexity: float = 0.3
-    max_memory: int = 100
-    # Simulated Annealing parameters
-    temperature: float = 1.0
-    cooling_rate: float = 0.95
-    # Motor de generación de parches estructurales
-    patch_generator: Optional[HypothesisGenerator] = None
-    # CORTEX-OMEGA: Compiler
-    compiler: Optional['KnowledgeCompiler'] = None
-    # Refinement Loop
-    max_refinement_steps: int = 3
-    
-    # CORTEX-OMEGA v1.5: World-Class Config
-    mode: str = "robust" # "robust" (default) or "strict"
-    priors: Dict[str, float] = field(default_factory=lambda: {"rule_base": 0.5, "exception": 0.3})
-    noise_model: Dict[str, float] = field(default_factory=lambda: {"false_positive": 0.05, "false_negative": 0.05})
-    plasticity: Dict[str, Any] = field(default_factory=lambda: {"min_conf_to_keep": 0.6, "max_rule_count": 500})
-    feature_priors: Dict[str, float] = field(default_factory=dict)
+
 
 
 
@@ -81,83 +61,41 @@ def update_theory_kernel(
     Entrada: teoría actual, nueva escena, memoria, axiomas y configuración.
     Salida: nueva teoría, nueva memoria.
     """
-    logger.debug(f"DEBUG: Start Update Theory for Scene {scene.id}")
+    learner = Learner(config)
+    return learner.learn(theory, scene, memory, axioms)
 
-    # 1. Proyección
-    prediction, trace = infer(theory, scene)
 
-    # 2. Refuerzo / Castigo
-    # Actualizar estadísticas de uso y fiabilidad
-    is_correct = (prediction == scene.ground_truth)
-    update_rule_stats(theory, trace, is_correct, config)
-    
-    # Legacy calls removed (reward_rules, punish_rules) as update_rule_stats handles everything.
-        
-    new_memory = append_to_memory(memory, scene, config.max_memory)
-    
-    # CORTEX-OMEGA: Maintenance (GC + Compiler)
-    garbage_collect(theory)
-    if config.compiler:
-        config.compiler.promote_stable_rules(theory, axioms)
-        config.compiler.check_conflicts(theory)
-            
-        # Check for NEGATIVE_GAP (True Negative without explicit explanation)
-        should_return = True
-        if not prediction and not scene.ground_truth:
-            # Check trace for explicit negative derivation
-            has_explanation = False
-            neg_pred = f"NOT_{scene.target_predicate}"
-            for entry in trace:
-                if entry.get("type") == "derivation":
-                    derived = entry.get("derived")
-                    if derived and derived.predicate == neg_pred:
-                        has_explanation = True
-                        break
-            
-            if not has_explanation:
-                should_return = False
-        
-        if should_return:
-            return theory, new_memory
-
-    # Tipo de error (equivalente al "signo" del gradiente)
-    if prediction and not scene.ground_truth:
-        error_type = "FALSE_POSITIVE"
-    elif not prediction and scene.ground_truth:
-        error_type = "FALSE_NEGATIVE"
-    elif not prediction and not scene.ground_truth:
-        # TRUE NEGATIVE (Correctly predicted False)
-        # Check for NEGATIVE_GAP
-        error_type = "NEGATIVE_GAP"
-    else:
-        # True Positive
-        return theory, new_memory
-        
-    # 2. Generación de teorías candidatas (parches estructurales)
-
-    candidate_theories, ctx = generate_structural_candidates(
+def _propose_candidates(
+    theory: RuleBase,
+    scene: Scene,
+    memory: List[Scene],
+    trace,
+    error_type: str,
+    config: KernelConfig
+) -> Tuple[List[Tuple[RuleBase, Any]], Optional[FailureContext]]:
+    return generate_structural_candidates(
         theory=theory,
         scene=scene,
         memory=memory,
         trace=trace,
         error_type=error_type,
-        patch_generator=config.patch_generator,
-        lambda_complexity=config.lambda_complexity,
-        top_k=20,
+        config=config,
+        feature_priors=config.feature_priors
     )
 
-    # 3. Evaluación del baseline (armonía actual)
-    eval_scenes = memory + [scene]
-    
-    # CORTEX-OMEGA: Entropy Regularization
-    entropy_map = calculate_attribute_entropy(eval_scenes)
-    
+
+def _evaluate_and_select(
+    theory: RuleBase,
+    candidate_theories: List[Tuple[RuleBase, Any]],
+    eval_scenes: List[Scene],
+    axioms: ValueBase,
+    entropy_map: Dict[str, float],
+    config: KernelConfig,
+    ctx: Optional[FailureContext]
+) -> Tuple[RuleBase, Any]:
+    critic = Critic(config)
     best_theory = theory
-    best_harmony = score_harmony(theory, eval_scenes, config.lambda_complexity, entropy_map)
-    
-    best_harmony = score_harmony(theory, eval_scenes, config.lambda_complexity, entropy_map)
-    
-    # 4. Búsqueda de la mejor teoría que respete axiomas y mejore armonía
+    best_harmony = critic.score_harmony(theory, eval_scenes, entropy_map)
     best_patch = None
     
     for i, (T_candidate, patch) in enumerate(candidate_theories):
@@ -166,7 +104,7 @@ def update_theory_kernel(
             continue
 
         # 4b. Recalcular armonía global
-        h_new = score_harmony(T_candidate, eval_scenes, config.lambda_complexity, entropy_map)
+        h_new = critic.score_harmony(T_candidate, eval_scenes, entropy_map)
 
         accepted = False
         if h_new > best_harmony:
@@ -202,22 +140,22 @@ def update_theory_kernel(
     # CORTEX-OMEGA: Feedback Loop
     if best_patch and config.patch_generator and ctx:
         config.patch_generator.record_feedback(ctx, best_patch)
+        
+    return best_theory, best_patch
 
-    # 5. Actualizar memoria (FIFO)
-    new_memory = append_to_memory(memory, scene, config.max_memory)
+
+def _refine_theory(
+    theory: RuleBase,
+    memory: List[Scene],
+    eval_scenes: List[Scene],
+    axioms: ValueBase,
+    entropy_map: Dict[str, float],
+    config: KernelConfig
+) -> RuleBase:
+    best_theory = theory
     
-    # CORTEX-OMEGA: Reinforcement Learning (Update Confidence)
-    # We verify the prediction of the BEST theory on the CURRENT scene.
-    pred, trace = infer(best_theory, scene)
-    is_correct = (pred == scene.ground_truth)
-    update_rule_stats(best_theory, trace, is_correct)
-    
-    # 5. Refinement Loop (Fix Regressions on Memory)
-    # This is crucial for fixing False Positives introduced by generalization (e.g. Temporal Learning)
-    MAX_REFINEMENT_STEPS = 3
-    refinement_candidates = []
-    for i in range(MAX_REFINEMENT_STEPS):
-        worst_scene = find_worst_error(best_theory, new_memory, axioms)
+    for i in range(config.max_refinement_steps):
+        worst_scene = find_worst_error(best_theory, memory, axioms)
         
         if not worst_scene:
             break
@@ -233,16 +171,16 @@ def update_theory_kernel(
             memory=memory,
             trace=trace_r,
             error_type=err_type,
-            patch_generator=config.patch_generator,
-            lambda_complexity=config.lambda_complexity,
-            config=config
+            config=config,
+            feature_priors=config.feature_priors
         )
         
         if not refinement_candidates:
             break
             
         # Evaluate candidates
-        best_refinement_harmony = score_harmony(best_theory, eval_scenes, config.lambda_complexity, entropy_map)
+        critic = Critic(config)
+        best_refinement_harmony = critic.score_harmony(best_theory, eval_scenes, entropy_map)
         best_refinement_theory = best_theory
         improved = False
         
@@ -250,7 +188,7 @@ def update_theory_kernel(
             if violates_axioms(T_cand, axioms, eval_scenes):
                 continue
                 
-            h_cand = score_harmony(T_cand, eval_scenes, config.lambda_complexity, entropy_map)
+            h_cand = critic.score_harmony(T_cand, eval_scenes, entropy_map)
             
             if h_cand > best_refinement_harmony:
                 best_refinement_harmony = h_cand
@@ -262,45 +200,35 @@ def update_theory_kernel(
         else:
             break
             
-    if not refinement_candidates:
-         pass
-
-    # CORTEX-OMEGA: Garbage Collection (Periodic)
-    # For now, run every time (it's cheap).
-    threshold = config.plasticity.get("min_conf_to_keep", 0.0) if config.plasticity else 0.0
-    garbage_collect(best_theory, threshold=threshold, config=config)
-    
-    # CORTEX-OMEGA: Self-Reflecting Compiler
-    if config.compiler:
-        config.compiler.promote_stable_rules(best_theory, axioms)
-        config.compiler.check_conflicts(best_theory)
-    
-    return best_theory, new_memory
+    return best_theory
 
 
 # =========================
 # 2. Operaciones auxiliares
 # =========================
 
-def infer(theory: RuleBase, scene: Scene):
+def infer(theory: RuleBase, scene: Scene, config: Optional[KernelConfig] = None) -> Tuple[bool, List[Dict]]:
     """
-    Inferencia pura: corre el motor lógico sobre la escena usando la teoría dada.
-    Retorna (predicción_bool, traza_inferencia).
+    Realiza inferencia sobre una escena usando la teoría dada.
+    Retorna (predicción, traza).
     """
-    facts_copy = clone_factbase(scene.facts)
-    engine = InferenceEngine(facts_copy, theory)
-    engine.forward_chain(debug=True)
+    engine = InferenceEngine(scene.facts, theory)
+    max_iter = config.inference_max_iterations if config else 1000
+    engine.forward_chain(max_iterations=max_iter)
     
+    # Verificar si el target fue derivado
     if scene.target_args:
         target = Literal(scene.target_predicate, scene.target_args)
     else:
         target = Literal(scene.target_predicate, (scene.target_entity,))
-    
-    # CORTEX-OMEGA v1.3: Conflict Resolution (Holographic Logic)
-    # Check for both Positive and Negative derivations
+        
+    # CORTEX-OMEGA v1.3: Conflict Resolution
     pos_proof = engine.get_proof(target)
     
-    neg_target = Literal(f"NOT_{scene.target_predicate}", (scene.target_entity,))
+    if scene.target_args:
+        neg_target = Literal(f"NOT_{scene.target_predicate}", scene.target_args)
+    else:
+        neg_target = Literal(f"NOT_{scene.target_predicate}", (scene.target_entity,))
     neg_proof = engine.get_proof(neg_target)
     
     prediction = False
@@ -308,21 +236,13 @@ def infer(theory: RuleBase, scene: Scene):
     
     if pos_proof and not neg_proof:
         prediction = True
+        trace = pos_proof.steps
     elif not pos_proof and neg_proof:
         prediction = False
+        trace = neg_proof.steps
     elif pos_proof and neg_proof:
-        # CONFLICT! Resolve by Confidence
         if pos_proof.confidence > neg_proof.confidence:
             prediction = True
-        elif neg_proof.confidence > pos_proof.confidence:
-            prediction = False
-        else:
-            # Tie-breaker: Specificity? Or default to False (Safety)?
-            # For now, default to False (Conservative)
-            prediction = False
-            
-    # CORTEX-OMEGA: Usage Tracking
-    if trace:
         logger.debug(f"Inference Trace for {scene.target_entity}:")
         for step in trace:
             logger.debug(f"  - {step}")
@@ -380,7 +300,7 @@ def reward_rules(theory: RuleBase, trace: List[Dict], target_predicate: str, gro
 
 
 
-def update_rule_stats(theory: RuleBase, trace: List[Dict], is_correct: bool, config: Optional[KernelConfig] = None):
+def update_rule_stats(theory: RuleBase, trace: List[Dict], is_correct: bool, config: KernelConfig):
     """
     CORTEX-OMEGA v1.4: First-Class Rule Statistics.
     Updates fires_pos, fires_neg, support, failure, and confidence for ALL firing rules.
@@ -399,7 +319,7 @@ def update_rule_stats(theory: RuleBase, trace: List[Dict], is_correct: bool, con
                     rule.fires_neg += 1
                     
                     # CORTEX-OMEGA v1.3: Mode-based Punishment
-                    mode = config.mode if config else "robust"
+                    mode = config.mode
                     if mode == "strict":
                         rule.failure_count = 1_000_000
                         logger.info(f"💀 STRICT MODE: Rule {rid} killed due to counter-example.")
@@ -467,139 +387,10 @@ def calculate_attribute_entropy(memory: List[Scene]) -> Dict[str, float]:
     return entropy_map
 
 
-def generate_structural_candidates(
-    theory: RuleBase,
-    scene: Scene,
-    memory: List[Scene],
-    trace,
-    error_type: str,
-    patch_generator: Optional[HypothesisGenerator] = None,
-    top_k: int = 5,
-    lambda_complexity: float = 0.3,
-    config: KernelConfig = None
-) -> Tuple[List[Tuple[RuleBase, Any]], Optional[FailureContext]]:
-    """
-    Toma la teoría actual + la escena conflictiva y devuelve una lista de teorías candidatas
-    ya parcheadas (RuleBase clonadas y modificadas).
-    El kernel no sabe de 'Patch', solo ve teorías completas.
-    """
-    if patch_generator is None:
-        patch_generator = HypothesisGenerator()
-
-    culprit_rule = identify_culprit_rule(
-        theory, 
-        error_type, 
-        trace, 
-        target_predicate=scene.target_predicate if scene.target_predicate else "glows"
-    )
-    
-    # Handle Cold Start (No rules yet) or Failure to Identify Culprit
-    if culprit_rule is None:
-        if error_type in ["FALSE_NEGATIVE", "NEGATIVE_GAP"]:
-            # Genesis Mode: Create a dummy rule to serve as the "culprit" for CREATE_BRANCH
-            # This allows the generator to propose a new rule from scratch.
-            # Use the scene's target predicate, not hardcoded 'glows'
-            target_pred = scene.target_predicate if scene.target_predicate else "glows"
-            
-            # Determine variables based on arity
-            if scene.target_args and len(scene.target_args) == 2:
-                vars = ("X", "Z")
-            else:
-                vars = ("X",)
-                
-            culprit_rule = Rule("dummy_genesis", Literal(target_pred, vars), [])
-        else:
-            return [], None
-
-    # Construir contexto de fallo (muy parecido a tu FailureContext actual)
-    ctx = FailureContext(
-        rule=culprit_rule,
-        error_type=error_type,
-        target_entity=scene.target_entity,
-        target_predicate=scene.target_predicate,
-        target_args=scene.target_args,
-        scene_facts=scene.facts,
-        memory=memory,
-        prediction=(error_type == "FALSE_POSITIVE"),
-        ground_truth=not (error_type == "FALSE_POSITIVE"),
-        inference_trace=trace,
-        feature_priors=config.feature_priors if config else {}
-    )
-
-    # Pass lambda_complexity to generator if supported
-    if hasattr(patch_generator, 'lambda_complexity'):
-        patch_generator.lambda_complexity = lambda_complexity
-
-    raw_candidates = patch_generator.generate(ctx, top_k=top_k)
-    candidate_theories: List[Tuple[RuleBase, Any]] = []
-
-    for patch, new_rule, aux_rules in raw_candidates:
-        # Clonar teoría completa
-        T_candidate = copy.deepcopy(theory)
-
-        # Aplicar la cirugía estructural de forma *local* a esta copia
-        if patch.operation.value == "CREATE_BRANCH":
-            # Añadir regla nueva sin eliminar la original
-            T_candidate.add(new_rule)
-        else:
-            # Reemplazar la regla culpable
-            # Si es genesis (dummy), no hay nada que reemplazar, solo añadir
-            if culprit_rule.id == "dummy_genesis":
-                T_candidate.add(new_rule)
-            elif culprit_rule.id in T_candidate.rules:
-                T_candidate.replace(culprit_rule.id, new_rule)
-
-        # Añadir reglas auxiliares (conceptos, excepciones, etc.)
-        for aux in aux_rules:
-            if aux.id in T_candidate.rules:
-                T_candidate.replace(aux.id, aux)
-            else:
-                T_candidate.add(aux)
-
-        candidate_theories.append((T_candidate, patch))
-
-        candidate_theories.append((T_candidate, patch))
-
-    return candidate_theories, ctx
+from .theorist import Theorist # Added import
 
 
-def identify_culprit_rule(
-    theory: RuleBase,
-    error_type: str,
-    trace,
-    target_predicate: str,
-) -> Optional[Rule]:
-    """
-    Versión funcional de tu _identify_culprit, pero sin dependencias de 'self'.
-    """
-    if error_type == "FALSE_POSITIVE":
-        # Buscar en la traza la última derivación responsable
-        for entry in reversed(trace):
-            if entry.get("type") == "derivation":
-                rule_id = entry.get("rule_id")
-                if rule_id and rule_id in theory.rules:
-                    return theory.rules[rule_id]
 
-        # Fallback: primera regla del predicado target
-        rules = theory.get_rules_for_predicate(target_predicate)
-        if rules:
-            return rules[0]
-
-    elif error_type == "FALSE_NEGATIVE":
-        rules = theory.get_rules_for_predicate(target_predicate)
-        # CORTEX-OMEGA: Only consider POSITIVE rules for False Negatives.
-        # If we pick a negative rule, we'll just branch it into another negative rule,
-        # which doesn't solve the missing positive coverage.
-        positive_rules = [r for r in rules if not r.head.negated]
-        
-        if positive_rules:
-            return positive_rules[0]
-        # Fallback for Cold Start: If no rules exist, we can't identify a culprit.
-        # But we still need to generate a candidate.
-        # We return None here, but generate_structural_candidates needs to handle it.
-        return None
-
-    return None
 
 
 def violates_axioms(
@@ -626,153 +417,6 @@ def violates_axioms(
     return False
 
 
-def score_harmony(
-    theory: RuleBase,
-    scenes: List[Scene],
-    lambda_complexity: float,
-    entropy_map: Dict[str, float] = None,
-) -> float:
-    """
-    Función de 'pérdida invertida':
-        harmony = F1_Score / (1 + λ * complexity)
-
-    Donde:
-      - F1_Score: Media armónica de Precision y Recall.
-      - complexity: longitud estructural de la teoría + Entropía.
-    """
-    # CORTEX-OMEGA v1.3: Use F1-Score to avoid "Always False" local optimum
-    score = evaluate_f1(theory, scenes)
-    complexity = compute_complexity(theory, entropy_map)
-    return score / (1.0 + lambda_complexity * complexity)
-
-
-def evaluate_f1(theory: RuleBase, scenes: List[Scene]) -> float:
-    if not scenes:
-        return 0.0
-
-    tp = 0
-    fp = 0
-    fn = 0
-    
-    for s in scenes:
-        facts_copy = clone_factbase(s.facts)
-        engine = InferenceEngine(facts_copy, theory)
-        engine.forward_chain()
-
-        if s.target_args:
-            target_lit = Literal(s.target_predicate, s.target_args)
-        else:
-            target_lit = Literal(s.target_predicate, (s.target_entity,))
-            
-        # CORTEX-OMEGA v1.3: Conflict Resolution (Holographic Logic)
-        # Check for both Positive and Negative derivations
-        pos_proof = engine.get_proof(target_lit)
-        
-        neg_target = Literal(f"NOT_{s.target_predicate}", (s.target_entity,))
-        neg_proof = engine.get_proof(neg_target)
-        
-        prediction = False
-        trace = getattr(engine, "trace", [])
-        
-        if pos_proof and not neg_proof:
-            prediction = True
-            trace = pos_proof.steps
-        elif not pos_proof and neg_proof:
-            prediction = False
-            trace = neg_proof.steps
-        elif pos_proof and neg_proof:
-            if pos_proof.confidence > neg_proof.confidence:
-                prediction = True
-                trace = pos_proof.steps
-            else:
-                prediction = False
-                trace = neg_proof.steps
-        
-        if prediction and s.ground_truth:
-            tp += 1
-        elif prediction and not s.ground_truth:
-            fp += 1
-        elif not prediction and s.ground_truth:
-            fn += 1
-            
-    precision = tp / (tp + fp) if (tp + fp) > 0 else 1.0 # Default to 1.0 if no predictions (conservative)
-    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0 # Default to 0.0 if no positives
-    
-    if precision + recall == 0:
-        return 0.0
-        
-    f1 = 2 * (precision * recall) / (precision + recall)
-    return f1
-
-
-def compute_complexity(theory: RuleBase, entropy_map: Dict[str, float] = None) -> float:
-    """
-    CORTEX-OMEGA: Includes Entropy Regularization.
-    Cost = Rules + Sum(1 + Alpha * Entropy(Literal))
-    """
-    num_rules = len(theory.rules)
-    num_concepts = sum(1 for r in theory.rules.values() if "Concept_" in r.id)
-    
-    literal_cost = 0.0
-    alpha = 0.2 # Reduced from 0.5 to allow valid high-entropy attributes (like color)
-    
-    for r in theory.rules.values():
-        for lit in r.body:
-            base_cost = 0.5
-            entropy_cost = 0.0
-            if entropy_map and lit.predicate in entropy_map:
-                entropy_cost = alpha * entropy_map[lit.predicate]
-            
-            literal_cost += (base_cost + entropy_cost)
-
-    # Pesos heurísticos (pueden refinarse)
-    return 1.0 * num_rules + literal_cost + 0.8 * num_concepts
-
-
-def score_mdl(rule: Rule, lambda_complexity: float = 0.2) -> float:
-    """
-    CORTEX-OMEGA v1.4: MDL Score for a single rule.
-    Score = Coverage * (1 - ErrorRate) - Lambda * Complexity
-    
-    Higher is better.
-    """
-    if rule.coverage == 0:
-        return 0.0
-        
-    error_rate = 1.0 - rule.reliability
-    # We want to maximize Coverage * Reliability, penalized by Complexity.
-    
-    # Adjusted Formula:
-    # Score = (FiresPos - FiresNeg) - Lambda * Complexity
-    # This is equivalent to Coverage * (Rel - (1-Rel)) - Lambda * Complexity
-    # = Coverage * (2*Rel - 1) - Lambda * Complexity
-    
-    # Let's stick to the plan:
-    # score(R) = coverage * (1 - error_rate) - lambda * complexity
-    # coverage * reliability - lambda * complexity
-    # fires_pos - lambda * complexity
-    
-    # Wait, if fires_pos is high, we like it.
-    # If complexity is high, we dislike it.
-    # But we also want to penalize fires_neg explicitly?
-    # fires_pos accounts for reliability implicitly (it's the numerator).
-    # But fires_neg doesn't hurt fires_pos directly.
-    
-    # Better Formula:
-    # Score = fires_pos - fires_neg - lambda * complexity
-    
-    return (rule.fires_pos - rule.fires_neg) - (lambda_complexity * rule.complexity)
-
-
-def clone_factbase(fb: FactBase) -> FactBase:
-    """
-    Copia profunda de un FactBase, reutilizando tu representación interna.
-    """
-    fb_copy = FactBase()
-    for pred, args_set in fb.facts.items():
-        for args in args_set:
-            fb_copy.add(pred, args)
-    return fb_copy
 
 
 def append_to_memory(memory: List[Scene], scene: Scene, max_memory: int) -> List[Scene]:
@@ -802,7 +446,8 @@ def garbage_collect(theory: RuleBase, threshold: float = 0.0, config: KernelConf
         if rule.support_count < 5:
             continue
             
-        score = score_mdl(rule, lambda_complexity=lambda_val)
+        critic = Critic(config)
+        score = critic.score_mdl(rule)
         
         # If score is negative, the rule is actively harmful or too complex for its value
         if score < threshold:

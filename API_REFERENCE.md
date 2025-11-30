@@ -9,7 +9,7 @@ This document details the public API surface for the `cortex-omega` package.
 ### `class cortex_omega.Cortex`
 The main entry point for the Epistemic Inference Engine.
 
-#### `__init__(self, sensitivity: float = 0.1)`
+#### `__init__(self, sensitivity: float = 0.1, mode: str = "robust", priors: dict = None, noise_model: dict = None, plasticity: dict = None, feature_priors: dict = None)`
 Initializes a new Cortex kernel instance.
 
 * **Parameters:**
@@ -17,6 +17,13 @@ Initializes a new Cortex kernel instance.
         * Values closer to `0.0` make the engine "imaginative" (accepts weak correlations).
         * Values closer to `1.0` make the engine "skeptical" (requires strong causality).
         * *Default:* `0.1` (Recommended for dirty CSVs).
+    * `mode` (*str*): Operating mode.
+        * `"robust"` (Default): Bayesian, noise-tolerant. Requires multiple counter-examples to override a rule.
+        * `"strict"`: Zero Tolerance. A single counter-example overrides a general rule.
+    * `priors` (*dict, optional*): Bayesian priors for rule generation (e.g., `{"rule_base": 0.5}`).
+    * `noise_model` (*dict, optional*): Expected noise rates (e.g., `{"false_positive": 0.05}`).
+    * `plasticity` (*dict, optional*): Parameters for rule retention and memory limits.
+    * `feature_priors` (*dict, optional*): Causal hints for feature selection (e.g., `{"color": 0.1, "material": 0.9}`).
 
 #### `absorb(self, file_path: str, target_col: str = None)`
 Ingests a raw data file (CSV/JSON), performs entropy analysis to identify noise, and updates the internal logic theory.
@@ -39,6 +46,15 @@ Injects specific memories or rules directly into the engine without reading a fi
 
 * **Note:** Use this method to trigger the **Kill Switch** by providing new data that contradicts established axioms.
 
+#### `add_rule(self, rule_str: str)`
+Injects a human-written rule into the theory.
+
+* **Parameters:**
+    * `rule_str` (*str*): Prolog-style string.
+        * Example: `"mortal(X) :- man(X)"`
+        * Example: `"fraud(X) :- transaction(X, amount, V), V > 10000"`
+* **Raises:** `RuleParseError` if the string is invalid.
+
 #### `set_mode(self, mode: str)`
 Dynamically switches the operating mode.
 
@@ -52,6 +68,19 @@ Exports learned rules to a standard format.
 * **Parameters:**
     * `format` (*str*): `"json"` or `"prolog"`.
 * **Returns:** String containing the exported rules.
+
+#### `save_brain(self, path: str)`
+Serializes the full brain (theory + memory) to disk via pickle.
+
+* **Parameters:**
+    * `path` (*str*): Path to the output file.
+
+#### `load_brain(path: str) -> Cortex`
+Static method. Loads a previously saved brain.
+
+* **Parameters:**
+    * `path` (*str*): Path to the input file.
+* **Returns:** Loaded `Cortex` instance.
 
 #### `inspect_rules(self, target: str = None) -> List[Rule]`
 Returns a list of crystallized rules, optionally filtered by a target predicate.
@@ -76,10 +105,11 @@ Queries the crystallized logic engine for a prediction based on partial evidence
 The object returned by a query, containing both the inference and the epistemic metadata.
 
 * **Attributes:**
-    * `prediction` (*bool*): The logical conclusion (`True` / `False`). Returns `None` if the system has insufficient knowledge (epistemic void).
+    * `prediction` (*bool | None*): The logical conclusion (`True` / `False`). Returns `None` if the system has insufficient knowledge (epistemic void).
     * `confidence` (*float*): A score between `0.0` and `1.0` indicating the strength of the axiom used.
-    * `axiom` (*str*): The string representation of the crystallized rule used for deduction.
+    * `explanation` (*str | None*): The string representation of the crystallized rule used for deduction.
         * Example: `"fraud(X) :- mass(X, heavy), type(X, guest)"`
+    * `proof` (*Any | None*): A structured proof object containing the derivation trace.
 
 ### `class cortex_omega.core.rules.Rule`
 Represents a crystallized logical pattern.

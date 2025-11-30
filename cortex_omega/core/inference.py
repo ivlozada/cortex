@@ -7,6 +7,22 @@ Forward chaining inference engine with support for negation.
 from typing import Dict, List, Set, Tuple, Optional, Any
 from dataclasses import dataclass
 from .rules import Literal, Rule, FactBase, RuleBase
+from collections import defaultdict
+
+@dataclass
+class DependencyIndex:
+    by_predicate: Dict[str, List[Rule]]
+
+    @classmethod
+    def from_theory(cls, theory: RuleBase) -> "DependencyIndex":
+        index = defaultdict(list)
+        for rule in theory.rules.values():
+            for lit in rule.body:
+                index[lit.predicate].append(rule)
+        return cls(by_predicate=dict(index))
+    
+    def get_triggered_rules(self, predicate: str) -> List[Rule]:
+        return self.by_predicate.get(predicate, [])
 
 @dataclass
 class ProofStep:
@@ -39,6 +55,7 @@ class InferenceEngine:
         self.trace: List[Dict] = []  # Traza de inferencia para credit assignment
         # Map: derived_literal -> (rule_id, bindings, list_of_antecedent_literals)
         self.provenance: Dict[Literal, Tuple[str, Dict[str, str], List[Literal]]] = {}
+        self.dependency_index = DependencyIndex.from_theory(rule_base)
 
     
     def unify(self, literal: Literal, fact_args: Tuple[str, ...]) -> Optional[Dict[str, str]]:
@@ -214,13 +231,39 @@ class InferenceEngine:
         derived = set()
 
         def run_phase(rules_subset, phase_name):
+            # Initial set of rules to check: ALL rules in the subset
+            # Because we need to match against initial facts
+            rules_to_check = set(r.id for r in rules_subset)
+            
             iteration = 0
             while iteration < max_iterations:
                 iteration += 1
                 iteration_new_facts = []
                 
                 # 1. Evaluate rules
-                for rule in rules_subset:
+                # Only evaluate rules that are in rules_to_check AND in rules_subset
+                # (rules_subset defines the phase scope)
+                
+                # Convert IDs back to Rule objects
+                current_rules = []
+                for rid in rules_to_check:
+                    if rid in self.rules.rules:
+                        rule = self.rules.rules[rid]
+                        # Check if rule is in the current phase subset
+                        # Optimization: Pre-compute IDs for phase subset
+                        # For now, just check if it's in rules_subset list (slow O(N))
+                        # Better: pass set of IDs to run_phase
+                        current_rules.append(rule)
+                
+                # Filter by phase (naive but correct)
+                # Actually, rules_subset is a list. Let's make it a set of IDs for O(1) check
+                subset_ids = set(r.id for r in rules_subset)
+                current_rules = [r for r in current_rules if r.id in subset_ids]
+                
+                # Clear rules_to_check for next iteration (unless we find new facts)
+                next_rules_to_check = set()
+                
+                for rule in current_rules:
                     if debug: logger.debug(f"Evaluating rule {rule.id}: {rule}")
                     rule_new_count = 0
                     body_results = self.evaluate_body(rule.body)
@@ -260,15 +303,19 @@ class InferenceEngine:
                 # 2. Add new facts to the fact base and provenance
                 for head, rule_id, bindings in iteration_new_facts:
                     fact_added = False
+                    predicate_key = ""
+                    
                     if head.negated:
                         key = f"NOT_{head.predicate}"
                         if head.args not in self.facts.facts[key]:
                             self.facts.add(key, head.args)
                             fact_added = True
+                            predicate_key = key
                     else:
                         if head.args not in self.facts.facts[head.predicate]:
                             self.facts.add(head.predicate, head.args)
                             fact_added = True
+                            predicate_key = head.predicate
                     
                     if fact_added:
                         # Normalize head for provenance
@@ -284,6 +331,30 @@ class InferenceEngine:
                             antecedents.append(ground_lit)
                             
                         self.provenance[provenance_head] = (rule_id, bindings, antecedents)
+                        
+                        # Trigger dependent rules
+                        # If we added P(a), trigger rules with P in body
+                        # Note: NOT_P triggers rules with NOT_P in body
+                        # Our index keys are predicates.
+                        # If predicate_key is "NOT_P", we look for "NOT_P" in index?
+                        # Literal.predicate for negated literal is just "P" but negated=True.
+                        # DependencyIndex indexes by lit.predicate.
+                        # Wait, DependencyIndex implementation:
+                        # index[lit.predicate].append(rule)
+                        # If lit is NOT P, lit.predicate is P.
+                        # So if we add NOT_P, we should trigger rules that have NOT P.
+                        # But if we index by P, we trigger rules with P AND rules with NOT P.
+                        # That's fine (over-approximation).
+                        
+                        # However, self.facts stores "NOT_P" as a key.
+                        # predicate_key is "NOT_P" or "P".
+                        # If "NOT_P", the predicate name is "P" (conceptually).
+                        # But our Literal structure keeps "P" and negated=True.
+                        
+                        trigger_pred = head.predicate
+                        triggered = self.dependency_index.get_triggered_rules(trigger_pred)
+                        for r in triggered:
+                            next_rules_to_check.add(r.id)
                     
                     derived.add(head)
                     self.trace.append({
@@ -292,6 +363,8 @@ class InferenceEngine:
                         "derived": head,
                         "bindings": bindings
                     })
+                
+                rules_to_check = next_rules_to_check
 
         # Run Phases
         if debug: logger.debug("=== Phase 1: Early Rules (No Negation) ===")

@@ -246,30 +246,30 @@ class Rule:
 
 class FactBase:
     """Base de hechos: almacena hechos ground con probabilidades opcionales."""
-    
+
     def __init__(self):
         self.facts: Dict[str, Set[Tuple[str, ...]]] = defaultdict(set)
         self.probabilities: Dict[Tuple[str, Tuple], float] = {}
-    
+
     def add(self, predicate: str, args: Tuple[str, ...], prob: float = 1.0):
         """Añade un hecho."""
         self.facts[predicate].add(args)
         if prob < 1.0:
             self.probabilities[(predicate, args)] = prob
-    
+
     def remove(self, predicate: str, args: Tuple[str, ...]):
         """Elimina un hecho."""
         self.facts[predicate].discard(args)
         self.probabilities.pop((predicate, args), None)
-    
+
     def query(self, predicate: str, args: Tuple[str, ...] = None) -> List[Tuple[str, ...]]:
         """Busca hechos que coincidan. None en args es wildcard."""
         if predicate not in self.facts:
             return []
-        
+
         if args is None:
             return list(self.facts[predicate])
-        
+
         results = []
         for fact_args in self.facts[predicate]:
             if len(fact_args) != len(args):
@@ -282,80 +282,84 @@ class FactBase:
             if match:
                 results.append(fact_args)
         return results
-    
-    def contains(self, literal: Literal) -> bool:
-        """Verifica si un literal ground está en la base."""
-        # 1. Exact match (Fast)
+
+    def contains(self, literal: 'Literal') -> bool:
+        """
+        Verifica si un literal está en la base.
+        CORTEX-OMEGA v2.1 Update: Supports Subsumption.
+        If literal is ground (e.g. add(4,0,4)) and DB has universal fact (e.g. add(X,0,X)),
+        returns True.
+        """
+        # 1. Fast Exact Match
         if literal.args in self.facts.get(literal.predicate, set()):
-            return not literal.negated if literal.negated else True
-            
-        # 2. Subsumption check (Slower, for universal facts like add(X, 0, X))
-        # Only if we are looking for a positive fact
+             return not literal.negated
+        
+        # 2. Subsumption Check (Only if we are checking positive existence)
         if not literal.negated:
             candidates = self.facts.get(literal.predicate, set())
-            for fact_args in candidates:
-                if self._unify_args(fact_args, literal.args):
+            for general_args in candidates:
+                if self._subsumes(general_args, literal.args):
                     return True
-                    
-        return False
 
-    def _unify_args(self, pattern_args: Tuple[Any, ...], target_args: Tuple[Any, ...]) -> bool:
-        """Checks if pattern_args subsumes target_args (target is instance of pattern)."""
-        if len(pattern_args) != len(target_args):
+        return literal.negated # Return True if negated (not found), False otherwise
+
+    def _subsumes(self, general_args: Tuple, specific_args: Tuple) -> bool:
+        """
+        Returns True if general_args covers specific_args via variable binding.
+        e.g. (X, 0, X) subsumes (4, 0, 4) -> True
+             (X, 0, X) subsumes (4, 0, 5) -> False
+        """
+        if len(general_args) != len(specific_args):
             return False
+        
         bindings = {}
-        return self._unify_terms_list(pattern_args, target_args, bindings)
-
-    def _unify_terms_list(self, patterns: Tuple[Any, ...], targets: Tuple[Any, ...], bindings: Dict[str, Any]) -> bool:
-        for p, t in zip(patterns, targets):
-            if not self._unify_term(p, t, bindings):
-                return False
+        
+        for gen, spec in zip(general_args, specific_args):
+            # Check if gen is a Variable Term
+            is_var = False
+            var_name = ""
+            
+            if isinstance(gen, Term) and gen.is_variable():
+                is_var = True
+                var_name = gen.name
+            elif isinstance(gen, str) and gen and gen[0].isupper(): # Legacy string vars
+                is_var = True
+                var_name = gen
+            
+            if is_var:
+                # It's a variable. Check consistency.
+                spec_str = str(spec)
+                if var_name in bindings:
+                    if bindings[var_name] != spec_str:
+                        return False # Contradiction (e.g. X=4 and X=5)
+                else:
+                    bindings[var_name] = spec_str
+            else:
+                # It's a constant. Must match exactly.
+                if str(gen) != str(spec):
+                    return False
+                    
         return True
 
-    def _unify_term(self, p: Any, t: Any, bindings: Dict[str, Any]) -> bool:
-        # Normalize strings to Terms if needed (legacy)
-        if isinstance(p, str): p = Term(p)
-        if isinstance(t, str): t = Term(t)
-        
-        # 1. Variable in pattern
-        if isinstance(p, Term) and p.is_variable():
-            if p.name in bindings:
-                return bindings[p.name] == t
-            bindings[p.name] = t
-            return True
-            
-        # 2. Constant/Structure match
-        if isinstance(p, Term) and isinstance(t, Term):
-            if p.name != t.name:
-                return False
-            if len(p.args) != len(t.args):
-                return False
-            return self._unify_terms_list(p.args, t.args, bindings)
-            
-        # 3. Primitive equality
-        return p == t
-    
     def get_all_predicates(self) -> Set[str]:
         """Retorna todos los predicados conocidos."""
         return set(self.facts.keys())
     
     def get_entities(self) -> Set[str]:
-        """Retorna todas las entidades (constantes) en la base."""
         entities = set()
         for args_set in self.facts.values():
             for args in args_set:
                 entities.update(args)
         return entities
-    
+
     def to_dict(self) -> Dict[str, List[Tuple]]:
-        """Serializa la base de hechos."""
         return {k: list(v) for k, v in self.facts.items()}
-    
+
     def __repr__(self):
         lines = []
         for pred, args_set in self.facts.items():
             for args in args_set:
-                lines.append(f"{pred}({', '.join(args)})")
+                lines.append(f"{pred}({', '.join(str(a) for a in args)})")
         return "\n".join(lines)
 
 

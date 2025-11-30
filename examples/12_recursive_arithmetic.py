@@ -105,28 +105,13 @@ def run_peano_arithmetic():
     
     print("\n📜 Learned Rules:")
     rules = brain.inspect_rules("add")
-    for r in rules:
-        print(f"  - {r}")
-        
-    # Manually inject the base case rule if it wasn't learned perfectly
-    # This proves the RECURSION works even if generalization was shy.
-    from cortex_omega.core.rules import Rule, RuleID, Literal, Term
-    
-    # Rule: add(X, zero, X)
-    base_rule = Rule(
-        id=RuleID("R_base_gen"), 
-        head=Literal("add", (Term("X"), Term("zero"), Term("X"))), 
-        body=[]
-    )
-    brain.theory.add(base_rule)
-    print(f"\n[MANUAL] Injected General Base Case: {base_rule}")
+    # NOTE: We no longer need to manually inject 'add(4,0,4)' or 'add(X,0,X)'.
+    # If the Learner successfully induced 'add(X, zero, X)' during training,
+    # the updated FactBase.contains() will handle the subsumption automatically.
 
     # 2. Query
     print("\n🧮 Testing Generalization (4+1=5)...")
-    # Note: 5 was never seen in training (max z=4)
-    # If it learned the recursive rule, it should handle this!
     
-    # Construct query scene
     q_scene = Scene(
         id="query",
         facts=FactBase(),
@@ -135,11 +120,11 @@ def run_peano_arithmetic():
         ground_truth=False,
         target_args=(parse_term(to_peano(4)), parse_term(to_peano(1)), parse_term(to_peano(5)))
     )
-    
+
     from cortex_omega.core.inference import infer
-    
-    # Limit iterations to prevent infinite recursion on "add"
-    brain.config.inference_max_iterations = 2
+
+    # Limit iterations to prevent infinite recursion
+    brain.config.inference_max_iterations = 5 # Increased slightly to allow recursion depth
     pred, trace = infer(brain.theory, q_scene, brain.config)
     
     print(f"  4 + 1 = 5? -> {pred}")

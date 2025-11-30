@@ -285,11 +285,55 @@ class FactBase:
     
     def contains(self, literal: Literal) -> bool:
         """Verifica si un literal ground está en la base."""
-        exists = literal.args in self.facts.get(literal.predicate, set())
-        # logger.debug(f"DEBUG: FactBase.contains({literal}) -> {exists} in {self.facts.get(literal.predicate, set())}")
-        if literal.negated:
-            return not exists
-        return exists
+        # 1. Exact match (Fast)
+        if literal.args in self.facts.get(literal.predicate, set()):
+            return not literal.negated if literal.negated else True
+            
+        # 2. Subsumption check (Slower, for universal facts like add(X, 0, X))
+        # Only if we are looking for a positive fact
+        if not literal.negated:
+            candidates = self.facts.get(literal.predicate, set())
+            for fact_args in candidates:
+                if self._unify_args(fact_args, literal.args):
+                    return True
+                    
+        return False
+
+    def _unify_args(self, pattern_args: Tuple[Any, ...], target_args: Tuple[Any, ...]) -> bool:
+        """Checks if pattern_args subsumes target_args (target is instance of pattern)."""
+        if len(pattern_args) != len(target_args):
+            return False
+        bindings = {}
+        return self._unify_terms_list(pattern_args, target_args, bindings)
+
+    def _unify_terms_list(self, patterns: Tuple[Any, ...], targets: Tuple[Any, ...], bindings: Dict[str, Any]) -> bool:
+        for p, t in zip(patterns, targets):
+            if not self._unify_term(p, t, bindings):
+                return False
+        return True
+
+    def _unify_term(self, p: Any, t: Any, bindings: Dict[str, Any]) -> bool:
+        # Normalize strings to Terms if needed (legacy)
+        if isinstance(p, str): p = Term(p)
+        if isinstance(t, str): t = Term(t)
+        
+        # 1. Variable in pattern
+        if isinstance(p, Term) and p.is_variable():
+            if p.name in bindings:
+                return bindings[p.name] == t
+            bindings[p.name] = t
+            return True
+            
+        # 2. Constant/Structure match
+        if isinstance(p, Term) and isinstance(t, Term):
+            if p.name != t.name:
+                return False
+            if len(p.args) != len(t.args):
+                return False
+            return self._unify_terms_list(p.args, t.args, bindings)
+            
+        # 3. Primitive equality
+        return p == t
     
     def get_all_predicates(self) -> Set[str]:
         """Retorna todos los predicados conocidos."""

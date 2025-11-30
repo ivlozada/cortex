@@ -72,7 +72,7 @@ class NumericThresholdStrategy(RepairStrategy):
                 target_rule_id=str(ctx.rule.id),
                 details={
                     "add_body": add_body,
-                    "predicate": pred,
+                    "split_predicate": pred,
                     "operator": op,
                     "threshold": threshold,
                 },
@@ -147,7 +147,7 @@ class TemporalConstraintStrategy(RepairStrategy):
                                 if s.target_predicate != ctx.target_predicate: continue
                                 
                                 # Find bindings for s
-                                matcher_pos = InferenceEngine(s.facts, None)
+                                matcher_pos = InferenceEngine(s.facts, RuleBase())
                                 pos_bindings_list = matcher_pos.evaluate_body(ctx.rule.body)
                                 if not pos_bindings_list: continue 
                                 

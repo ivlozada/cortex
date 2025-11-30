@@ -3,14 +3,7 @@ import unittest
 from cortex_omega import Cortex
 from cortex_omega.core.rules import Rule, Literal, FactBase, Scene
 
-import logging
-import sys
-root = logging.getLogger()
-root.setLevel(logging.DEBUG)
-handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.DEBUG)
-root.addHandler(handler)
-logger = logging.getLogger(__name__)
+
 
 class TestRelationalGrandparent(unittest.TestCase):
     def test_grandparent_induction(self):

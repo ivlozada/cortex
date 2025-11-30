@@ -205,4 +205,4 @@ We welcome contributions! Please see `ROADMAP.md` for future plans.
 
 ## 📄 License
 
-MIT License. Copyright (c) 2025 Ivan Lozada.
+Cortex-Omega is released under the MIT License. See the [LICENSE](LICENSE) file for details.

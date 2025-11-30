@@ -46,7 +46,8 @@ class Cortex:
                  priors: Dict[str, float] = None,
                  noise_model: Dict[str, float] = None,
                  plasticity: Dict[str, Any] = None,
-                 feature_priors: Dict[str, float] = None):
+                 feature_priors: Dict[str, float] = None,
+                 random_seed: Optional[int] = None): # <--- New Argument
         """
         Initializes the Cortex Brain.
 
@@ -61,6 +62,7 @@ class Cortex:
             noise_model (dict): Expected noise rates. e.g. {"false_positive": 0.05, "false_negative": 0.05}
             plasticity (dict): Parameters for rule retention. e.g. {"min_conf_to_keep": 0.6, "max_rule_count": 500}
             feature_priors (dict): Causal hints for feature selection. e.g. {"is_heavy": 0.9, "color": 0.1}
+            random_seed (int, optional): Seed for deterministic behavior (CI/Testing).
         """
         self.config = KernelConfig(
             lambda_complexity=sensitivity, 
@@ -68,7 +70,8 @@ class Cortex:
             priors=priors or {"rule_base": 0.5, "exception": 0.3},
             noise_model=noise_model or {"false_positive": 0.05, "false_negative": 0.05},
             plasticity=plasticity or {"min_conf_to_keep": 0.6, "max_rule_count": 500},
-            feature_priors=feature_priors or {}
+            feature_priors=feature_priors or {},
+            random_seed=random_seed # <--- Pass it to config
         )
         self.theory = RuleBase()
         self.axioms = ValueBase()

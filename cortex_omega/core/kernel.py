@@ -28,6 +28,12 @@ class GDMKernel:
     
     def __init__(self, config: Optional[KernelConfig] = None):
         self.config = config or KernelConfig()
+        
+        # CI Stability Logic
+        if self.config.random_seed is not None:
+            import random
+            random.seed(self.config.random_seed)
+
         self.theory: Optional[RuleBase] = None
         self.memory: List[Scene] = []
         self.axioms = ValueBase()

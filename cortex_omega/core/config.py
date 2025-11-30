@@ -43,6 +43,9 @@ class KernelConfig:
     # Debug Mode
     debug: bool = False
     
+    # CI Stability Fix (v2.0.1)
+    random_seed: Optional[int] = None
+
     # CORTEX-OMEGA v2.0: Centralized Hyperparameters
     hyperparams: 'Hyperparameters' = field(default_factory=lambda: Hyperparameters())
     
